@@ -3666,7 +3666,7 @@ export default function Admin({ section = null }) {
                     <th className="py-2 pr-3">Account</th>
                     <th className="py-2 pr-3">Contact</th>
                     <th className="py-2 pr-3">Software</th>
-                    <th className="py-2 pr-3">Devices</th>
+                    <th className="py-2 pr-3">Seats / Devices</th>
                     <th className="py-2 pr-3">Next expiry</th>
                     <th className="py-2 pr-3">Time left</th>
                     <th className="py-2 pr-0 text-right"></th>
@@ -3743,10 +3743,14 @@ export default function Admin({ section = null }) {
                             </span>
                           </td>
                           <td className="py-3 pr-3">
-                            {org.activeDevices}{" "}
+                            {/* Seats are per product: the firm's figure is the
+                                seats on its licence, never the products' seats
+                                added up. Machines bound are counted across the
+                                products, so they sit beside it, not over it. */}
+                            {org.seats || "–"}{" "}
                             <span className="text-slate-500 text-xs">
-                              of {org.totalSeats} seat
-                              {org.totalSeats === 1 ? "" : "s"}
+                              seat{org.seats === "1" ? "" : "s"} · {org.activeDevices} machine
+                              {org.activeDevices === 1 ? "" : "s"} bound
                             </span>
                           </td>
                           <td className="py-3 pr-3">

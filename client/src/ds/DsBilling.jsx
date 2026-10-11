@@ -28,6 +28,7 @@ import { apiAuthed } from "../api.js";
 import { API_BASE } from "../config.js";
 import { useAuth } from "../store.jsx";
 import { termTotalNGN } from "../lib/termPricing.js";
+import { seatFigure, seatsText } from "../lib/seatFigure.js";
 
 const money = (n, ccy = "NGN") =>
   new Intl.NumberFormat(ccy === "NGN" ? "en-NG" : "en-US", {
@@ -234,7 +235,12 @@ export default function DsBilling() {
       subYearly,
       yearIfMonthly,
       saving,
-      seats: lines.reduce((n, l) => n + l.seats, 0),
+      // The seat figure of the licence — the same people hold each product,
+      // so it is the count the lines share ("3"), or a range ("2–3") when
+      // they differ — never the lines' seats added up. How many products
+      // renew is a separate number.
+      seats: seatFigure(lines).label,
+      products: lines.length,
     };
   }, [summary, catalogue, seatOverride, subs]);
 
@@ -325,7 +331,7 @@ export default function DsBilling() {
           <h1>Billing &amp; invoices</h1>
           <p>
             {view.nextDate
-              ? `${yearly ? "Yearly" : "Monthly"}, ${view.seats} seat${view.seats === 1 ? "" : "s"}, ${money(total)} on ${longDate(view.nextDate)}.${view.saving > 0 ? " Yearly billing costs less than twelve monthly payments." : ""}`
+              ? `${yearly ? "Yearly" : "Monthly"}, ${view.products} product${view.products === 1 ? "" : "s"}, ${seatsText(view.seats)}, ${money(total)} on ${longDate(view.nextDate)}.${view.saving > 0 ? " Yearly billing costs less than twelve monthly payments." : ""}`
               : view.active.length
                 ? "Nothing is scheduled to renew: your active licences have no expiry date set."
                 : "Nothing is due. There is no active subscription on this account."}
@@ -408,7 +414,8 @@ export default function DsBilling() {
 
                     <div>
                       <span>
-                        Subtotal · {view.seats} seat{view.seats === 1 ? "" : "s"}
+                        Subtotal · {view.products} product{view.products === 1 ? "" : "s"} ·{" "}
+                        {seatsText(view.seats)}
                       </span>
                       <b>{money(subtotal)}</b>
                     </div>

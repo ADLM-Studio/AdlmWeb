@@ -98,6 +98,10 @@ export default function DsAdminOrganisations() {
           <AdmDim>nothing</AdmDim>
         ),
     },
+    // Software is how many products the firm holds; seats is how many users
+    // its licence is for — one figure, the same across its products or a
+    // range ("2–3") when they differ, never the products' seats added up.
+    { h: "Software", num: true, cell: (f) => (f.software ? f.software : <AdmDim>–</AdmDim>) },
     { h: "Seats", num: true, cell: (f) => (f.seats ? f.seats : <AdmDim>–</AdmDim>) },
     {
       h: "Licences",

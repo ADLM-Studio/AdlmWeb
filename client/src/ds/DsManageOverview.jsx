@@ -18,6 +18,7 @@ import { apiAuthed } from "../api.js";
 import { API_BASE } from "../config.js";
 import { useAuth } from "../store.jsx";
 import { termTotalNGN } from "../lib/termPricing.js";
+import { seatFigure } from "../lib/seatFigure.js";
 import { DsOrgVideosPanel } from "./DsOrgVideos.jsx";
 
 const money = (n) =>
@@ -181,12 +182,26 @@ export default function DsManageOverview() {
     const active = licences.filter((e) => e.status === "active");
 
     // Seats: how many machines are actually bound against how many were bought.
-    const seatsOwned = licences.reduce((n, e) => n + (Number(e.seats) || 1), 0);
+    //
+    // Seats are PER PRODUCT, and the same people hold each product on a
+    // licence, so the account's seat figure is the count the products share
+    // ("3"), or a range ("2–3") when they differ — never the products' seats
+    // added together. Two products at three seats is three seats, not six.
+    // Use is reported per product underneath, because "in use" cannot be
+    // added across products either: the machines bound to QUIV are not the
+    // machines bound to RateGen.
+    //
     // `seatsUsed` from the API, not `devices.length`. The devices array is
     // only sent once every seat is taken — the desktop clients read it as the
     // "no seats left" signal — so counting it made a half-used licence look
     // like an unused one. `seatsUsed` is the count itself and is always sent.
-    const seatsUsed = licences.reduce((n, e) => n + (Number(e.seatsUsed) || 0), 0);
+    const seatFig = seatFigure(licences);
+    const seatUse = licences.map((e) => ({
+      name: e.productName || e.productKey,
+      owned: Number(e.seats) || 1,
+      used: Number(e.seatsUsed) || 0,
+    }));
+    const seatsIdle = seatUse.filter((s) => s.used < s.owned);
 
     // Next charge: the soonest expiry among active licences, and what those
     // renewing on that date cost. Computed from the catalogue rather than
@@ -271,8 +286,9 @@ export default function DsManageOverview() {
       coursesInProgress: courses.filter(
         (c) => Number(c.summary?.completedModules ?? 0) > 0,
       ).length,
-      seatsOwned,
-      seatsUsed,
+      seats: seatFig.label,
+      seatUse,
+      seatsIdle,
       nextDate,
       nextAmount,
       attention: attention.slice(0, 5),
@@ -378,17 +394,19 @@ export default function DsManageOverview() {
         <div className="dsh-stat">
           <span className="k">
             <svg viewBox="0 0 24 24"><use href="#hi-team" /></svg>
-            Seats in use
+            Seats
           </span>
           <b>
-            {view.seatsUsed}
-            {view.seatsOwned > 0 && <span className="u">of {view.seatsOwned}</span>}
+            {view.seats || 0}
+            {view.seats ? <span className="u">per product</span> : null}
           </b>
           <p className="ds-sub">
-            {view.seatsOwned === 0
+            {!view.seats
               ? "No seats yet"
-              : view.seatsOwned - view.seatsUsed > 0
-                ? `${view.seatsOwned - view.seatsUsed} sitting idle`
+              : view.seatsIdle.length
+                ? view.seatsIdle
+                    .map((s) => `${s.name}: ${s.used} of ${s.owned} installed`)
+                    .join(" · ")
                 : "Every seat installed"}
           </p>
         </div>
