@@ -1238,9 +1238,20 @@ export default function ProjectBillTable({
 
   // Assign the dragged bill item to a category/section. Marks dirty → Save
   // persists it and the server learns the mapping for future projects.
+  //
+  // Only in the two groupings a line can be re-filed in. A merged project's
+  // "source" grouping is read-only here: a line belongs to the discipline
+  // project it came from, and writing the source name into `category` (which
+  // this used to do) is what left a line filed under a section nobody could
+  // find afterwards.
+  const canFileSections =
+    String(groupByMode || "category") !== "source" &&
+    (String(groupByMode || "category") === "trade"
+      ? Boolean(onTradeChange)
+      : Boolean(onCategoryChange));
   const assignDraggedToCategory = useCallback(
     (category) => {
-      if (dragIdx == null) return;
+      if (dragIdx == null || !canFileSections) return false;
       const trade = String(groupByMode || "category") === "trade";
       if (trade) onTradeChange?.(dragIdx, category);
       else onCategoryChange?.(dragIdx, category);
@@ -1250,8 +1261,9 @@ export default function ProjectBillTable({
       // His "Moved to X" (PR2-12). Dropping a row onto a section is a small
       // gesture with no other confirmation, so it says what it did.
       fb.toast({ tone: "info", title: `Moved to ${category}`, ms: 2200 });
+      return true;
     },
-    [dragIdx, groupByMode, onTradeChange, onCategoryChange, fb],
+    [dragIdx, canFileSections, groupByMode, onTradeChange, onCategoryChange, fb],
   );
 
   // Ribbon tab state — mirrors MS Office ribbon (Home / Rates / Navigate / Extras)
@@ -1499,26 +1511,54 @@ export default function ProjectBillTable({
   // from — the default there, because a QS reading a combined bill wants to see
   // architectural and structural as distinct sections before anything else.
   const isSourceGrouping = mode === "source";
-  const activeCanonical = isSourceGrouping
-    ? Array.isArray(sourceOptions)
-      ? sourceOptions
-      : []
-    : isTradeGrouping
-      ? Array.isArray(tradeOptions)
-        ? tradeOptions
-        : []
-      : Array.isArray(categoryOptions)
-        ? categoryOptions
-        : [];
+  const activeCanonical = React.useMemo(
+    () =>
+      isSourceGrouping
+        ? Array.isArray(sourceOptions)
+          ? sourceOptions
+          : []
+        : isTradeGrouping
+          ? Array.isArray(tradeOptions)
+            ? tradeOptions
+            : []
+          : Array.isArray(categoryOptions)
+            ? categoryOptions
+            : [],
+    [isSourceGrouping, isTradeGrouping, sourceOptions, tradeOptions, categoryOptions],
+  );
+
+  // The section a row is filed under in the active grouping — the ONE place
+  // that decides it, so a drop compares sections exactly as the headers group
+  // them (same field, same trim, same fallback).
+  //
+  // A section named "External works" on the picker and a line tagged
+  // "external works" (a plugin, an import, a typo) are the same section: the
+  // line is grouped under the picker's spelling, not under a second header
+  // one case apart that the drop zone then renders "empty" next to.
+  const canonicalByLower = React.useMemo(() => {
+    const m = new Map();
+    for (const c of activeCanonical) {
+      const t = String(c || "").trim();
+      if (t && !m.has(t.toLowerCase())) m.set(t.toLowerCase(), t);
+    }
+    return m;
+  }, [activeCanonical]);
+  const sectionKeyOf = useCallback(
+    (row) => {
+      const raw = isSourceGrouping
+        ? String(row?.sourceName || "Unassigned").trim() || "Unassigned"
+        : isTradeGrouping
+          ? String(row?.trade || "Other").trim() || "Other"
+          : String(row?.category || "Uncategorized").trim() || "Uncategorized";
+      return canonicalByLower.get(raw.toLowerCase()) || raw;
+    },
+    [isSourceGrouping, isTradeGrouping, canonicalByLower],
+  );
 
   const groupedRows = React.useMemo(() => {
     const map = new Map();
     for (const row of sortedShown) {
-      const key = isSourceGrouping
-        ? String(row.sourceName || "Unassigned").trim() || "Unassigned"
-        : isTradeGrouping
-          ? String(row.trade || "Other").trim() || "Other"
-          : String(row.category || "Uncategorized").trim() || "Uncategorized";
+      const key = sectionKeyOf(row);
       if (!map.has(key)) map.set(key, []);
       map.get(key).push(row);
     }
@@ -1531,7 +1571,26 @@ export default function ProjectBillTable({
         .map(([c, rows]) => ({ category: c, rows })),
     ];
     return ordered;
-  }, [sortedShown, activeCanonical, isTradeGrouping, isSourceGrouping]);
+  }, [sortedShown, activeCanonical, sectionKeyOf]);
+
+  // Row keys. A QUIV bill can hold two lines with the same sn, code and
+  // description (the plugin stores sn as 0), and they used to share one React
+  // key. React then kept a stale row around after a reorder, and a drag that
+  // started on that row filed a DIFFERENT line under the section. Duplicates
+  // get their items-array index appended so every row has a key of its own.
+  const rowKeys = React.useMemo(() => {
+    const counts = new Map();
+    for (const row of sortedShown) {
+      const k = String(row.key ?? row.i);
+      counts.set(k, (counts.get(k) || 0) + 1);
+    }
+    const keys = new Map();
+    for (const row of sortedShown) {
+      const k = String(row.key ?? row.i);
+      keys.set(row.i, counts.get(k) > 1 ? `${k}#${row.i}` : k);
+    }
+    return keys;
+  }, [sortedShown]);
 
   // Per-category totals for subtotal rows + summary card.
   const categoryTotals = React.useMemo(() => {
@@ -2557,7 +2616,7 @@ export default function ProjectBillTable({
                       style={sectionRowStyle(dragOverCat === category && dragIdx != null)}
                       data-section={`cat-${category}`}
                       onDragOver={(e) => {
-                        if (dragIdx == null) return;
+                        if (dragIdx == null || !canFileSections) return;
                         e.preventDefault();
                         e.dataTransfer.dropEffect = "move";
                         setDragOverCat(category);
@@ -2568,6 +2627,7 @@ export default function ProjectBillTable({
                         )
                       }
                       onDrop={(e) => {
+                        if (dragIdx == null || !canFileSections) return;
                         e.preventDefault();
                         assignDraggedToCategory(category);
                       }}
@@ -2578,7 +2638,9 @@ export default function ProjectBillTable({
                             {category}
                           </span>
                           <span className="wk-locnote">
-                            {dragOverCat === category && dragIdx != null ? (
+                            {dragOverCat === category &&
+                            dragIdx != null &&
+                            canFileSections ? (
                               <span style={{ color: "var(--action)", fontWeight: 500 }}>
                                 Drop to move here
                               </span>
@@ -2614,7 +2676,7 @@ export default function ProjectBillTable({
                       const lineKey = String(row.key ?? row.i);
                       return (
                         <tr
-                          key={row.key || row.i}
+                          key={rowKeys.get(row.i) ?? row.i}
                           data-line={lineKey}
                           onFocusCapture={() =>
                             onLine?.(
@@ -2626,6 +2688,14 @@ export default function ProjectBillTable({
                           onDragStart={(e) => {
                             setDragIdx(row.i);
                             e.dataTransfer.effectAllowed = "move";
+                            // Firefox will not start a drag that carries no
+                            // data at all; Chrome does not care. The index
+                            // is a courtesy, the handlers use dragIdx.
+                            try {
+                              e.dataTransfer.setData("text/plain", String(row.i));
+                            } catch {
+                              /* ignore */
+                            }
                             // Make the drag image semi-transparent
                             if (e.currentTarget) {
                               e.dataTransfer.setDragImage(
@@ -2636,9 +2706,10 @@ export default function ProjectBillTable({
                             }
                           }}
                           onDragOver={(e) => {
+                            if (dragIdx == null) return;
                             e.preventDefault();
                             e.dataTransfer.dropEffect = "move";
-                            if (dragIdx != null && row.i !== dragIdx) {
+                            if (row.i !== dragIdx) {
                               setDragOverIdx(row.i);
                             }
                           }}
@@ -2648,8 +2719,26 @@ export default function ProjectBillTable({
                             );
                           }}
                           onDrop={(e) => {
+                            if (dragIdx == null) return;
                             e.preventDefault();
-                            if (dragIdx != null && dragIdx !== row.i) {
+                            if (dragIdx !== row.i) {
+                              // Dropping a line on a row INSIDE another section
+                              // is the "put it in that folder" gesture, and it
+                              // used to only reorder the line: it stayed in
+                              // its old section, now at a position nobody
+                              // asked for. It is filed under the row's section
+                              // first, then placed where it was dropped.
+                              const dragged = sortedShown.find(
+                                (r) => r.i === dragIdx,
+                              );
+                              const target = sectionKeyOf(row);
+                              if (
+                                canFileSections &&
+                                dragged &&
+                                sectionKeyOf(dragged) !== target
+                              ) {
+                                assignDraggedToCategory(target);
+                              }
                               onMoveItem?.(dragIdx, row.i);
                             }
                             setDragIdx(null);
@@ -2670,11 +2759,27 @@ export default function ProjectBillTable({
                           {/* Drag handle + S/N */}
                           <td className="px-1 py-2">
                             <div className="flex items-center gap-1">
-                              {!sortCol && (
+                              {!sortCol ? (
                                 <span
                                   className="cursor-grab active:cursor-grabbing touch-none"
                                   style={{ color: "var(--ink-3)", display: "inline-flex" }}
-                                  title="Drag to reorder"
+                                  title={
+                                    canFileSections
+                                      ? "Drag to reorder, or drop on a section to file it there"
+                                      : "Drag to reorder"
+                                  }
+                                >
+                                  <FaGripVertical size={13} />
+                                </span>
+                              ) : (
+                                // Dragging is off while a column is sorted: the
+                                // order on screen is not the bill's order. The
+                                // grip used to vanish without a word.
+                                <span
+                                  className="cursor-not-allowed"
+                                  style={{ color: "var(--ink-3)", display: "inline-flex", opacity: 0.35 }}
+                                  title="Clear the column sort to drag lines"
+                                  aria-label="Clear the column sort to drag lines"
                                 >
                                   <FaGripVertical size={13} />
                                 </span>
@@ -3258,7 +3363,11 @@ export default function ProjectBillTable({
                           c &&
                           c !== "Uncategorized" &&
                           c !== "Other" &&
-                          !groupedRows.some((g) => g.category === c),
+                          !groupedRows.some(
+                            (g) =>
+                              String(g.category).toLowerCase() ===
+                              String(c).toLowerCase(),
+                          ),
                       )
                       .map((category) => (
                         <React.Fragment key={`empty-cat-${category}`}>
@@ -3270,7 +3379,7 @@ export default function ProjectBillTable({
                       style={sectionRowStyle(dragOverCat === category && dragIdx != null)}
                             data-section={`cat-${category}`}
                             onDragOver={(e) => {
-                              if (dragIdx == null) return;
+                              if (dragIdx == null || !canFileSections) return;
                               e.preventDefault();
                               e.dataTransfer.dropEffect = "move";
                               setDragOverCat(category);
@@ -3281,6 +3390,7 @@ export default function ProjectBillTable({
                               )
                             }
                             onDrop={(e) => {
+                              if (dragIdx == null || !canFileSections) return;
                               e.preventDefault();
                               assignDraggedToCategory(category);
                             }}
@@ -3292,7 +3402,8 @@ export default function ProjectBillTable({
                                 </span>
                                 <span className="wk-locnote">
                                   {dragOverCat === category &&
-                                  dragIdx != null ? (
+                                  dragIdx != null &&
+                                  canFileSections ? (
                                     <span style={{ color: "var(--action)", fontWeight: 500 }}>
                                       Drop to move here
                                     </span>
@@ -3305,11 +3416,13 @@ export default function ProjectBillTable({
                           </tr>
                           <tr
                             onDragOver={(e) => {
-                              if (dragIdx == null) return;
+                              if (dragIdx == null || !canFileSections) return;
                               e.preventDefault();
+                              e.dataTransfer.dropEffect = "move";
                               setDragOverCat(category);
                             }}
                             onDrop={(e) => {
+                              if (dragIdx == null || !canFileSections) return;
                               e.preventDefault();
                               assignDraggedToCategory(category);
                             }}
