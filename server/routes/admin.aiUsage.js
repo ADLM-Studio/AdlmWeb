@@ -29,6 +29,7 @@ import { AiUsage } from "../models/AiUsage.js";
 import { AiAllocation } from "../models/AiAllocation.js";
 import { User } from "../models/User.js";
 import { Product } from "../models/Product.js";
+import { seatFigure } from "../util/seatFigure.js";
 import { Setting } from "../models/Setting.js";
 import {
   AI_FEATURES,
@@ -939,7 +940,10 @@ router.get("/accounts", async (req, res) => {
         location: u.location || "",
         joinedAt: u.createdAt || null,
         holds,
-        seats: holds.filter((h) => h.status === "active").reduce((n, h) => n + h.seats, 0),
+        // The licence's seat figure, per product — "3", or "2–3" — never the
+        // products' seats added together.
+        seats: seatFigure(holds.filter((h) => h.status === "active")).label,
+        software: new Set(holds.filter((h) => h.status === "active").map((h) => h.key)).size,
         // Three states, and the middle one is the point of the screen.
         access: holds.some((h) => h.status === "active")
           ? "active"

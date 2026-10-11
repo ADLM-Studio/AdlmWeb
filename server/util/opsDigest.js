@@ -3,8 +3,8 @@
 // The morning report: what went wrong for customers that nobody told us about.
 //
 // Written after September 2026, when two things sat unnoticed for weeks:
-//   * Y.S. Associates, 24 seats, could not use any ADLM desktop software from
-//     8 July. Their support ticket was marked resolved on 21 July while the
+//   * Y.S. Associates, eight seats on four products, could not use any ADLM
+//     desktop software from 8 July. Their support ticket was marked resolved on 21 July while the
 //     software stayed dark. We found out by phoning them in September.
 //   * Their dashboard read "Failed to fetch", and the server logged nothing,
 //     because the requests never arrived.
@@ -35,6 +35,7 @@ import { UsageSession } from "../models/UsageSession.js";
 import { User } from "../models/User.js";
 import { ClientNetError } from "../models/ClientNetError.js";
 import { rebuildFollowUps } from "./followUps.js";
+import { seatFigure } from "./seatFigure.js";
 import { sendViaSes } from "./sesTransport.js";
 import { wrapEmail } from "./emailLayout.js";
 import { senderFor, replyToAddress } from "./senders.js";
@@ -160,13 +161,17 @@ export async function gatherDigest({ now = new Date() } = {}) {
       phone: String(r.phone || "").trim(),
       status: r.status || "to_call",
       calls: Number(r.callCount || 0),
-      seats: Number(r.silence?.seats || 0),
+      // The seats on the licence — "8", or "2–8" when the quiet products
+      // differ — never the products' seats added together. The Software
+      // column beside it is how many products are quiet.
+      seats: seatFigure(r.silence?.products || []).label || String(Number(r.silence?.seats || 0)),
+      seatsMax: seatFigure(r.silence?.products || []).max || Number(r.silence?.seats || 0),
       days: r.silence?.days ?? null,
       neverUsed: !!r.silence?.neverUsed,
       products: (r.silence?.products || []).map((p) => p.productName || p.productKey),
       isNew: isNewlySilent(r.silence),
     }))
-    .sort((a, b) => b.seats - a.seats || (b.days ?? 0) - (a.days ?? 0));
+    .sort((a, b) => b.seatsMax - a.seatsMax || (b.days ?? 0) - (a.days ?? 0));
 
   // 2) tickets marked fixed where the software never checked in again
   const tickets = await SupportTicket.find(
