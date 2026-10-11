@@ -231,7 +231,47 @@ export function ladderFor(sourceHeight = 0) {
   // after a container's display matrix, and refusing its own rung over four
   // pixels would cost the whole point of the rung.
   const usable = h > 0 ? RUNGS.filter((r) => r.height <= h + 16) : RUNGS;
-  return (usable.length ? usable : [RUNGS[RUNGS.length - 1]]).map(rung);
+  const nativeRung = nativeRungFor(h, usable);
+  const rungs = nativeRung ? [nativeRung, ...usable] : usable;
+  return (rungs.length ? rungs : [RUNGS[RUNGS.length - 1]]).map(rung);
+}
+
+/**
+ * A source that sits BETWEEN rungs gets a rung of its own at the top.
+ *
+ * Filtering alone is right for the common heights, but a master of, say,
+ * 1440x610 (a Meet recording cropped to the shared screen) is above 540 and
+ * below 720, so the filter kept 540 as the best rung and the viewer watched a
+ * picture shrunk by a further 12% — on a screen recording whose text was the
+ * whole point. Measured on the Melodiva Projects video, 2026-10-11: the master
+ * was 610 lines and the top of the ladder was 1276x540.
+ *
+ * So when the source is more than the slack away from every kept rung, one
+ * extra rung is added at the source's own height (rounded to even, which the
+ * encoder needs). It costs one more output-minute per minute of video and
+ * nothing is scaled on it, so it is the one rung that shows exactly what was
+ * uploaded. Never above the top of the table: a source taller than 2160 still
+ * stops at 2160, for the cost reasons set out above.
+ */
+function nativeRungFor(h, usable) {
+  if (!(h > 0)) return null;
+  const top = RUNGS[0].height;
+  if (h >= top - 16) return null;
+  if (usable.some((r) => Math.abs(r.height - h) <= 16)) return null;
+  const height = Math.floor(h / 2) * 2;
+  if (height < RUNGS[RUNGS.length - 1].height) return null;
+  // Ceiling and quality interpolated from the rungs either side, so the native
+  // rung sits on the same bitrate curve as the rest of the table.
+  const above = [...RUNGS].reverse().find((r) => r.height > height) || RUNGS[0];
+  const below = RUNGS.find((r) => r.height < height) || RUNGS[RUNGS.length - 1];
+  const t = (height - below.height) / Math.max(1, above.height - below.height);
+  const maxBitrate = Math.round(below.maxBitrate + t * (above.maxBitrate - below.maxBitrate));
+  return {
+    height,
+    maxBitrate,
+    nameModifier: `_${height}`,
+    quality: Math.max(above.quality, below.quality),
+  };
 }
 
 /**
