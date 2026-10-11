@@ -33,6 +33,7 @@ import { Referral } from "../models/Referral.js";
 import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { Purchase } from "../models/Purchase.js";
 import { User } from "../models/User.js";
+import { seatFigure } from "../util/seatFigure.js";
 
 const router = express.Router();
 router.use(requireAuth, requirePermission("adminhub"));
@@ -73,7 +74,21 @@ function term(lines) {
   return `${m} month${m === 1 ? "" : "s"}`;
 }
 
-const seatsOf = (lines) => (lines || []).reduce((t, l) => t + (n0(l.qty) || 1), 0);
+/**
+ * The seats on the licence this order buys. `qty` on a line is seats only on
+ * an organisation purchase; a personal licence is one seat whatever the qty
+ * says (on legacy orders it was the number of months). And the figure is per
+ * product — two products at three seats is "3", or a range when the lines
+ * differ — never the lines added together.
+ */
+const seatsOf = (purchase, lines) => {
+  const org = String(purchase?.licenseType || "").toLowerCase() === "organization";
+  return seatFigure(
+    (lines || []).map((l) => ({
+      seats: org || String(l?.licenseType || "").toLowerCase() === "organization" ? n0(l.qty) || 1 : 1,
+    })),
+  ).label;
+};
 
 router.get("/", async (req, res, next) => {
   try {
@@ -141,7 +156,7 @@ router.get("/", async (req, res, next) => {
             : "Personal licence"),
         email: String(p.email || u?.email || "").trim(),
         what: describe(lines),
-        seats: seatsOf(lines),
+        seats: seatsOf(p, lines),
         term: term(lines),
         currency: p.currency || "NGN",
         gross,

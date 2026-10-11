@@ -2,8 +2,9 @@
 //
 // Who is paying for ADLM desktop software and not using it.
 //
-// Y.S. Associates held 32 seats across QUIV, HERON, the MEP plugin and Rate
-// Gen, and from 8 July 2026 none of their computers could reach ADLM. Nobody
+// Y.S. Associates held QUIV, HERON, the MEP plugin and Rate Gen on an
+// eight-seat licence, and from 8 July 2026 none of their computers could reach
+// ADLM. Nobody
 // here noticed for two months: the website still worked for them, their
 // licences were valid, and nothing in the system looked at whether licensed
 // software was actually being used. A firm that has stopped using what it
@@ -132,7 +133,12 @@ export function classifySilence({
     neverUsed: silentProducts.every((p) => !p.lastSeenAt),
     days: known.length ? Math.min(...known) : null,
     lastActivityAt: lastActivity ? new Date(lastActivity) : null,
-    seats: silentProducts.reduce((n, p) => n + p.seats, 0),
+    // The seats on the licence, not the products' seats added together: the
+    // same eight people hold each of a firm's products, so eight seats on
+    // four quiet products is still eight people not using what they pay for.
+    // The largest count across the quiet products (they should all be equal;
+    // products[] keeps each one so a screen can show a range when not).
+    seats: silentProducts.reduce((n, p) => Math.max(n, p.seats), 0),
     organizationName:
       silentProducts.find((p) => p.organizationName)?.organizationName ||
       String(live.find((e) => String(e.organizationName || "").trim())?.organizationName || "").trim(),

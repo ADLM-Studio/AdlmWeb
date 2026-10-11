@@ -28,6 +28,7 @@
 import express from "express";
 import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { User } from "../models/User.js";
+import { seatFigure } from "../util/seatFigure.js";
 
 const router = express.Router();
 router.use(requireAuth, requirePermission("users"));
@@ -93,8 +94,17 @@ router.get("/", async (req, res, next) => {
       .limit(1000)
       .lean();
 
+    // SEATS ARE PER PRODUCT, NOT A SUM
+    //
+    // An organisation licence carries the same seat count on each of its
+    // products — three people on QUIV are the same three people on RateGen —
+    // so the account's seat figure is that count, and a range when the
+    // products disagree. Adding them up reported Melodiva Projects (RateGen
+    // and QUIV on one licence) as 3 seats. How many products they hold is
+    // `software`, a different number under a different word.
     const shaped = users.map((u) => {
       const live = (u.entitlements || []).filter(isLive);
+      const holds = [...new Set(live.map((e) => e.productKey).filter(Boolean))];
       return {
         id: String(u._id),
         name:
@@ -105,8 +115,10 @@ router.get("/", async (req, res, next) => {
         org: orgOf(u),
         owner: isOwner(u),
         role: u.role || "user",
-        holds: live.map((e) => e.productKey).filter(Boolean),
-        seats: live.reduce((t, e) => t + (Number(e.seats) || 1), 0),
+        holds,
+        software: holds.length,
+        // "3", "2–3", or "" with no live licence — never the sum.
+        seats: seatFigure(live).label,
         expiry: nextExpiry(u),
         joined: u.createdAt || null,
       };
