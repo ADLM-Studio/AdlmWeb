@@ -30,14 +30,18 @@ import {
 
 dayjs.extend(relativeTime);
 
-function sumSeatsFromLines(lines) {
+// The seats on an order's licence. Seats are per product and the same people
+// hold each product on an organisation licence, so the order's figure is the
+// largest line, never the lines added together (two products at three seats
+// is three seats, not six).
+function seatsFromLines(lines) {
   if (!Array.isArray(lines) || lines.length === 0) return null;
-  let total = 0;
+  let max = 0;
   for (const ln of lines) {
     const seats = Math.max(parseInt(ln?.qty ?? 1, 10) || 1, 1);
-    total += seats;
+    if (seats > max) max = seats;
   }
-  return total || null;
+  return max || null;
 }
 
 function formatPendingProducts(p) {
@@ -217,7 +221,7 @@ export function OrdersTab({
                       ? "bg-rose-50 text-rose-700 ring-1 ring-rose-100"
                       : "bg-amber-50 text-amber-800 ring-1 ring-amber-100";
 
-                const seats = sumSeatsFromLines(o.lines) || 1;
+                const seats = seatsFromLines(o.lines) || 1;
                 const lt =
                   String(o.licenseType || "").toLowerCase() ===
                     "organization" || seats > 1
@@ -717,7 +721,7 @@ export function InstallationsTab({
 
               const lt = String(p.licenseType || "personal").toLowerCase();
               const seats =
-                lt === "organization" ? sumSeatsFromLines(p.lines) : null;
+                lt === "organization" ? seatsFromLines(p.lines) : null;
 
               const pendingProducts = formatPendingProducts(p);
 

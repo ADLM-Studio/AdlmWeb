@@ -13,6 +13,7 @@ import { Link } from "react-router-dom";
 import { API_BASE } from "../config.js";
 import { readCartItems, readCartMeta, CART_CHANGED } from "../lib/cart.js";
 import { termTotal, unitPrices } from "../lib/termPricing.js";
+import { seatFigure, seatsText } from "../lib/seatFigure.js";
 
 const fmt = (n, currency = "NGN") =>
   new Intl.NumberFormat(currency === "USD" ? "en-US" : "en-NG", {
@@ -108,7 +109,11 @@ export default function DsCheckoutSummary() {
     [items, products, currency],
   );
 
-  const seatTotal = rows.reduce((n, r) => n + r.seats, 0);
+  // Seats are per product and the same people use each one, so the cart's
+  // seat figure is the count the lines share ("3 seats each") or a range
+  // when they differ — never the lines' seats added together. His sample
+  // read "5 seats across 3 products"; that sum was neither number.
+  const seatFig = seatFigure(rows);
   const renewal = rows.reduce((n, r) => n + (r.known ? r.recurring : 0), 0);
   const yearly = items.every(
     (it) => Math.max(1, parseInt(it.periods ?? it.qty ?? 1, 10) || 1) >= 12,
@@ -145,8 +150,8 @@ export default function DsCheckoutSummary() {
   return (
     <>
       <p className="ds-sub">
-        {seatTotal} seat{seatTotal === 1 ? "" : "s"} across {rows.length} product
-        {rows.length === 1 ? "" : "s"}
+        {rows.length} product{rows.length === 1 ? "" : "s"}, {seatsText(seatFig)}
+        {rows.length > 1 && seatFig.min === seatFig.max ? " each" : ""}
         {training ? ", with on-site training" : ""}.
       </p>
 

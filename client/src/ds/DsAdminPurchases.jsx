@@ -42,6 +42,7 @@
 import React from "react";
 import { apiAuthed } from "../api.js";
 import { useAuth } from "../store.jsx";
+import { seatsText } from "../lib/seatFigure.js";
 
 const money = (n, currency = "NGN") =>
   new Intl.NumberFormat("en-NG", {
@@ -244,9 +245,7 @@ export default function DsAdminPurchases() {
                 <b>{p.what || "Nothing itemised on this order"}</b>
                 <span className="adm-meta">
                   <span>{p.ref}</span>
-                  <span>
-                    {p.seats} seat{p.seats === 1 ? "" : "s"}
-                  </span>
+                  {p.seats ? <span>{seatsText(p.seats)}</span> : null}
                   {p.term ? <span>{p.term}</span> : null}
                 </span>
               </div>
