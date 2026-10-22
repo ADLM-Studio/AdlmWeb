@@ -105,13 +105,65 @@ const emergency = {
   notifyBody: { releaseNotes: ["Verification links fixed."] },
 };
 
-function serve({ items = [], current = null, pending = [], awaitingReview = [], rollouts = [], recent = [] } = {}) {
+// A task from the team feed, as GET /admin/team-tasks shapes it. #10 is the one
+// whose title used to be cut at the colon; #66 carries the bot's own red dot.
+const taskDesign = {
+  n: 10,
+  to: "richard",
+  owner: "Richard Enoch",
+  doing: "design",
+  text: "Design: saving variations on a merged project (R4c, emailed 26 Sep)",
+  link: "",
+  urgent: false,
+  status: "open",
+  openedAt: "2026-09-26T17:25:00Z",
+  answer: {},
+};
+const taskUrgent = {
+  n: 66,
+  to: "richard",
+  owner: "Richard Enoch",
+  doing: "design",
+  text: "Nudge on #32: HERON 3 AI Review has no design yet. We are building the HERON 3 review section now.",
+  link: "https://adlm-studio.vercel.app/plugin-heron",
+  urgent: true,
+  status: "open",
+  openedAt: "2026-09-28T02:45:00Z",
+  answer: {},
+};
+const taskDecide = {
+  n: 156,
+  to: "richard",
+  owner: "Richard Enoch",
+  doing: "decide",
+  text: "Decide on the work-board proposal 'QUIV: undo a deletion on the take-off list'. Built and waiting on your approval.",
+  link: "https://www.adlmstudio.net/admin/work",
+  urgent: false,
+  status: "open",
+  openedAt: "2026-10-11T14:21:00Z",
+  answer: {},
+};
+const taskOfEbun = {
+  n: 147,
+  to: "ebun",
+  owner: "Ebun",
+  doing: "admin",
+  text: "Update your Notion task board today: all 10 open tasks are past due.",
+  link: "",
+  urgent: false,
+  status: "open",
+  openedAt: "2026-10-07T12:09:00Z",
+  answer: {},
+};
+
+function serve({ items = [], current = null, pending = [], awaitingReview = [], rollouts = [], recent = [], tasks = [], me = "richard" } = {}) {
   answer = async (path) => {
     if (path === "/admin/work") return { ok: true, items, you: { isApprover: true }, options: {} };
     if (path === "/admin/releases/batch") return { ok: true, batch: current, recent: [] };
     if (path === "/admin/releases") {
       return { ok: true, pending, awaitingReview, rollouts, recent, emergencyReviewHours: 24, you: { isApprover: true } };
     }
+    if (path === "/admin/team-tasks") return { ok: true, me, items: tasks, recent: [] };
     return { ok: true };
   };
 }
@@ -123,7 +175,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Your desk", () => {
-  it("merges all five sources into one queue, deadline first", async () => {
+  it("merges the gate's five sources into one queue, deadline first", async () => {
     serve({ items: [idea], current: batch, pending: [build, setting], awaitingReview: [emergency] });
     mount();
 
@@ -207,6 +259,78 @@ describe("Your desk", () => {
       const post = calls.find((c) => c.path === "/admin/releases/c1/approve");
       expect(post).toBeTruthy();
       expect(post.body.rollout).toBe("everyone");
+    });
+  });
+
+  it("puts the task feed in the same queue: after a build, before an idea, the bot's red dot first", async () => {
+    serve({ items: [idea], pending: [build], tasks: [taskDesign, taskUrgent, taskDecide] });
+    mount();
+    await waitFor(() => expect(screen.getByText(/5 things waiting/)).toBeTruthy());
+
+    const rows = document.querySelectorAll("tbody tr");
+    expect(rows.length).toBe(5);
+    expect(rows[0].textContent).toContain("Build");
+    expect(rows[1].textContent).toContain("#66"); // urgent, though newer than #10
+    expect(rows[2].textContent).toContain("#10");
+    expect(rows[3].textContent).toContain("#156");
+    expect(rows[4].textContent).toContain("Idea");
+  });
+
+  it("does not cut a task's title at the first colon", async () => {
+    serve({ tasks: [taskDesign] });
+    mount();
+    await waitFor(() => expect(screen.getByText("Design: saving variations on a merged project (R4c, emailed 26 Sep)")).toBeTruthy());
+    expect(screen.queryByText("Design:")).toBeNull();
+  });
+
+  it("offers the kinds of work as chips with their counts, and a chip filters the list", async () => {
+    serve({ items: [idea], tasks: [taskDesign, taskUrgent, taskDecide] });
+    mount();
+    await waitFor(() => expect(screen.getByText(/4 things waiting/)).toBeTruthy());
+
+    const chips = Array.from(document.querySelectorAll(".dk-chip"));
+    const text = chips.map((c) => c.textContent);
+    expect(text).toContain("Everything4");
+    expect(text).toContain("Decide1");
+    expect(text).toContain("Design2");
+    expect(text).toContain("Releases and ideas1");
+
+    fireEvent.click(chips.find((c) => c.textContent === "Decide1"));
+    await waitFor(() => expect(document.querySelectorAll("tbody tr").length).toBe(1));
+    expect(document.querySelector("tbody tr").textContent).toContain("#156");
+  });
+
+  it("shows only his own tasks until he asks for other people's, and the badge agrees with the list", async () => {
+    serve({ tasks: [taskDesign, taskOfEbun] });
+    mount();
+    await waitFor(() => expect(screen.getByText(/1 thing waiting/)).toBeTruthy());
+    expect(document.querySelectorAll("tbody tr").length).toBe(1);
+    expect(screen.queryByText(/Notion task board/)).toBeNull();
+
+    fireEvent.click(screen.getByText("Also show the 1 on other people"));
+    await waitFor(() => expect(screen.getByText(/2 things waiting/)).toBeTruthy());
+    expect(document.querySelectorAll("tbody tr").length).toBe(2);
+    // the column names the owner only when the row is somebody else's
+    expect(screen.getByText("Ebun")).toBeTruthy();
+    expect(screen.queryByText("Richard Enoch")).toBeNull();
+  });
+
+  it("refuses to take a task out without a note, and Done posts to the feed", async () => {
+    serve({ tasks: [taskDecide] });
+    mount();
+    await waitFor(() => expect(screen.getByText(/undo a deletion/)).toBeTruthy());
+    fireEvent.click(screen.getByText(/undo a deletion/));
+
+    await waitFor(() => expect(screen.getByText("Take it out")).toBeTruthy());
+    fireEvent.click(screen.getByText("Take it out"));
+    await waitFor(() => expect(screen.getByText(/Say why it is being taken out/)).toBeTruthy());
+    expect(calls.filter((c) => c.method === "POST")).toHaveLength(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Done" }));
+    await waitFor(() => {
+      const post = calls.find((c) => c.path === "/admin/team-tasks/156/answer");
+      expect(post).toBeTruthy();
+      expect(post.body.verdict).toBe("done");
     });
   });
 

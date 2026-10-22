@@ -22,15 +22,24 @@
 //
 //   1. One place. From where he sits there is one question — what needs me —
 //      so there is one queue, and ideas, website batches, plugin builds,
-//      gated settings and emergency reviews are all rows in it.
+//      gated settings, emergency reviews and the team task feed are all rows
+//      in it.
 //   2. A table, and a verb. Every row says what it is and what he has to do in
 //      his words: "Waiting for you", never "awaiting-signoff"; "Approve or
 //      decline", never "pending".
 //   3. Nothing on the first screen he cannot act on. History, rollouts and
 //      what is in flight are real and needed, and they are behind a tab.
 //
-// It adds no endpoint. It merges three GETs the server already serves and
-// posts to the routes that already exist.
+// The task feed (15 Oct 2026). Seeing the real Discord digest changed what
+// this screen is for: the bot already numbers, groups and ages every task, and
+// Richard still had 32 open items because a list you cannot tick is a list you
+// learn to scroll past. So the desk renders that queue too, with state — Done
+// here means it leaves tomorrow's digest — and adds the one field the digest
+// never had: what kind of work each task is. "Decide 9" is an afternoon; no
+// amount of scrolling Discord ever said so.
+//
+// It merges four GETs the server serves (the team tasks are the only one added
+// for it) and posts to the routes that already exist.
 import React from "react";
 import { apiAuthed } from "../api.js";
 import { AdmChip, AdmTable, AdmTwo, AdmDim, AdmFilters } from "./adminUi.jsx";
@@ -82,6 +91,19 @@ const KEEP = [
   ["remove", "Take it out", "bad"],
 ];
 
+// What a task actually asks of him. The digest has no such field; without it
+// 32 items read as one undifferentiated wall. The server derives it from the
+// text (util/teamTasks.js), so the desk and the bot can never disagree; these
+// are the words and the rough time each takes.
+const DOING = {
+  decide: ["Decide", "Approve, ask for changes or decline. Each is a couple of minutes.", 2],
+  answer: ["Answer a question", "Somebody is blocked until you reply. Usually one number.", 5],
+  test: ["Test and sign off", "Open it, work through the flows, then approve or send back.", 25],
+  design: ["Design", "Drawing work. Needs a clear run at it, not a gap between meetings.", 90],
+  admin: ["Admin", "Housekeeping. Nobody is blocked, but it does not go away.", 10],
+};
+const DOING_ORDER = ["decide", "answer", "test", "design", "admin"];
+
 // Every answer he can give, in one place: how Done labels it, and how the
 // queue says it in a sentence.
 const SAID = {
@@ -90,11 +112,18 @@ const SAID = {
   declined: ["Declined", "declined it"],
   upheld: ["Upheld", "said it was justified"],
   objected: ["Objected", "objected to it"],
+  done: ["Done", "finished it"],
+  waiting: ["Waiting on somebody", "parked it"],
+  dropped: ["Taken out", "took it out"],
 };
 
 // A deadline outranks a release that is holding customers up, which outranks
-// an idea nobody is waiting on.
-const URGENCY = { emergency: 0, release: 1, candidate: 2, idea: 3 };
+// a task somebody is chasing, which outranks an idea nobody is waiting on.
+const URGENCY = { emergency: 0, release: 1, candidate: 2, task: 3, idea: 4 };
+
+// A fortnight of being re-sent every morning is a fact worth colouring — once,
+// in the column that is about waiting, not across the whole row.
+const STALE_DAYS = 14;
 
 // AdmFilters takes [value, label, count]; the count is the badge.
 const TABS = [
@@ -109,10 +138,18 @@ function productName(key, labels) {
   return labels?.[key] || PRODUCT_FALLBACK[key] || key || "—";
 }
 
-function productsOf(row, labels) {
+function productsOf(row, labels, meKey) {
+  // Repeating his own name on thirty rows of his own desk is noise. The
+  // column earns its place only when the row belongs to somebody else.
+  if (row._kind === "task") return row.to && row.to !== meKey ? row.owner || row.to : "";
   const keys = row.products?.length ? row.products : [row.productKey].filter(Boolean);
   if (!keys.length) return "—";
   return keys.map((k) => productName(k, labels)).join(", ");
+}
+
+function ageDays(when, now) {
+  if (!when) return 0;
+  return Math.max(0, Math.floor((now - new Date(when)) / 86400000));
 }
 
 function daysSince(when, now) {
@@ -139,11 +176,24 @@ function fullDate(when) {
   return new Date(when).toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" });
 }
 
-/* ------------------------------------------------------- the three sources
+// The digest writes a paragraph, not a title. The ask is the first sentence —
+// and a sentence ends at a full stop, not at the colon that introduces the
+// useful half ("Design: saving variations…" is one ask, not a heading called
+// "Design:"). Short openers take the next clause with them.
+function firstSentence(text, max = 104) {
+  const t = String(text || "").replace(/\s+/g, " ").trim();
+  const cut = t.search(/\.\s/);
+  let first = cut > 0 ? t.slice(0, cut) : t;
+  if (first.length < 30) first = t.slice(0, 110);
+  if (first.length > max) first = `${first.slice(0, max - 3).replace(/[\s,;:]+$/, "")}…`;
+  return first;
+}
+
+/* -------------------------------------------------------- the four sources
    One queue means merging what the server already returns, rather than asking
    for a new endpoint to do it on the way out. */
 
-function toRows({ work, batch, releases }) {
+function toRows({ work, batch, releases, tasks }) {
   const rows = [];
 
   for (const it of work?.items || []) {
@@ -164,18 +214,33 @@ function toRows({ work, batch, releases }) {
     rows.push({ ...c, _kind: "emergency", _id: String(c._id), _when: c.decidedAt || c.submittedAt });
   }
 
+  for (const t of tasks?.items || []) {
+    if (t.status !== "open") continue;
+    rows.push({ ...t, _kind: "task", _id: `task-${t.n}`, _when: t.openedAt, _parked: t.answer?.verdict === "waiting" });
+  }
+
   return rows.sort((a, z) => {
     const d = URGENCY[a._kind] - URGENCY[z._kind];
-    return d || new Date(a._when || 0) - new Date(z._when || 0);
+    if (d) return d;
+    // within the tasks: the bot's own red dot first, a parked one last
+    if (a._kind === "task") {
+      const u = Number(Boolean(z.urgent)) - Number(Boolean(a.urgent));
+      if (u) return u;
+      const p = Number(Boolean(a._parked)) - Number(Boolean(z._parked));
+      if (p) return p;
+    }
+    return new Date(a._when || 0) - new Date(z._when || 0);
   });
 }
 
 function labelOf(row) {
+  if (row._kind === "task") return `#${row.n}`;
   if (row._kind === "candidate") return row.kind === "setting" ? "Setting" : "Build";
   return { idea: "Idea", release: "Release", emergency: "Emergency" }[row._kind];
 }
 
 function titleOf(row) {
+  if (row._kind === "task") return firstSentence(row.text);
   if (row._kind === "idea" || row._kind === "release") return row.title;
   if (row.kind === "setting") return row.displayName || row.settingField;
   return `${row.displayName || row.productKey} ${row.toVersion || ""}`.trim();
@@ -184,6 +249,18 @@ function titleOf(row) {
 // What he has to do, as a verb, and roughly how long it will take. Never a
 // status: a status tells him where a thing is, a verb tells him what it wants.
 function job(row, now) {
+  if (row._kind === "task") {
+    if (row._parked) return { verb: "Waiting on somebody", mins: "parked" };
+    const d = DOING[row.doing] || DOING.admin;
+    // Only the bot's own red dot is urgent. Age is real, but it belongs in the
+    // column about waiting, or every row shouts and none is heard.
+    return {
+      verb: d[0],
+      mins: d[2] < 60 ? `${d[2]} min` : `about ${Math.round(d[2] / 60)}h`,
+      urgent: Boolean(row.urgent),
+    };
+  }
+
   if (row._kind === "idea") return { verb: "Approve or decline", mins: "2 min · read the case" };
 
   if (row._kind === "emergency") {
@@ -220,26 +297,32 @@ export default function DsAdminDesk() {
   const [busy, setBusy] = React.useState("");
   const [note, setNote] = React.useState("");
   const [rollout, setRollout] = React.useState("");
+  // Which kind of work he is looking at, and whose. Two filters, because the
+  // two questions he actually asks of this list are "what can I knock out in
+  // ten minutes" and "what is Dolapo waiting on me for".
+  const [doing, setDoing] = React.useState("");
+  const [who, setWho] = React.useState("me");
 
   const [now, setNow] = React.useState(() => new Date());
 
   const load = React.useCallback(async () => {
     setError("");
     try {
-      // Three calls, because that is what already exists. Each is allowed to
-      // fail on its own: a broken batch endpoint should not empty the queue of
-      // ideas he could still be getting through.
-      const [work, batch, releases] = await Promise.all([
+      // Four calls, because that is what exists. Each is allowed to fail on
+      // its own: a broken batch endpoint should not empty the queue of ideas
+      // he could still be getting through.
+      const [work, batch, releases, tasks] = await Promise.all([
         apiAuthed("/admin/work").catch((e) => ({ _error: e })),
         apiAuthed("/admin/releases/batch").catch((e) => ({ _error: e })),
         apiAuthed("/admin/releases").catch((e) => ({ _error: e })),
+        apiAuthed("/admin/team-tasks").catch((e) => ({ _error: e })),
       ]);
-      const broke = [work, batch, releases].filter((r) => r?._error);
-      if (broke.length === 3) throw broke[0]._error;
+      const broke = [work, batch, releases, tasks].filter((r) => r?._error);
+      if (broke.length === 4) throw broke[0]._error;
       if (broke.length) setError("Part of the desk could not be loaded. What is here is still current.");
       // one clock per load, so every "due in" on the screen agrees
       setNow(new Date());
-      setData({ work, batch, releases });
+      setData({ work, batch, releases, tasks });
     } catch (e) {
       setError(e?.data?.error || e?.message || "The desk could not be loaded.");
     }
@@ -249,9 +332,18 @@ export default function DsAdminDesk() {
     load();
   }, [load]);
 
-  const rows = React.useMemo(() => (data ? toRows(data) : []), [data]);
+  const all = React.useMemo(() => (data ? toRows(data) : []), [data]);
   const labels = data?.work?.options?.productLabels;
-  const current = React.useMemo(() => rows.find((r) => r._id === open) || null, [rows, open]);
+  const meKey = data?.tasks?.me || "";
+  const current = React.useMemo(() => all.find((r) => r._id === open) || null, [all, open]);
+
+  // Other people's tasks are in the feed too. They are his to look at, not to
+  // do, so they are behind a switch; the badge counts what the list shows, or
+  // the first thing the screen does is contradict itself.
+  const isMine = (r) => r._kind !== "task" || !meKey || r.to === meKey;
+  const mine = who === "all" ? all : all.filter(isMine);
+  const others = all.filter((r) => !isMine(r)).length;
+  const rows = doing ? mine.filter((r) => (doing === "gate" ? r._kind !== "task" : r._kind === "task" && r.doing === doing)) : mine;
 
   // Opening a row is also where its own draft state starts, so a note typed
   // against one thing can never be posted against another.
@@ -290,8 +382,8 @@ export default function DsAdminDesk() {
       h: "What it is",
       cell: (r) => (
         <span className="dk-what-cell">
-          <AdmChip tone={r._kind === "emergency" ? "bad" : r._kind === "idea" ? "calm" : "due"}>{labelOf(r)}</AdmChip>
-          <AdmTwo top={titleOf(r)} under={productsOf(r, labels)} />
+          <AdmChip tone={r._kind === "emergency" ? "bad" : r._kind === "idea" ? "calm" : r._kind === "task" ? "" : "due"}>{labelOf(r)}</AdmChip>
+          <AdmTwo top={titleOf(r)} under={productsOf(r, labels, meKey)} />
         </span>
       ),
     },
@@ -303,11 +395,38 @@ export default function DsAdminDesk() {
         return j.urgent ? <span className="dk-urgent">{j.mins}</span> : <AdmDim>{j.mins}</AdmDim>;
       },
     },
-    { h: "Waiting", num: true, cell: (r) => <AdmDim>{daysSince(r._when, now)}</AdmDim> },
+    {
+      h: "Waiting",
+      num: true,
+      cell: (r) => <span className={ageDays(r._when, now) >= STALE_DAYS ? "dk-stale" : undefined}>{daysSince(r._when, now)}</span>,
+    },
   ];
 
+  function Chips() {
+    const counts = {};
+    for (const r of mine) {
+      const k = r._kind === "task" ? r.doing || "admin" : "gate";
+      counts[k] = (counts[k] || 0) + 1;
+    }
+    const chips = [["", "Everything", mine.length]];
+    for (const k of DOING_ORDER) if (counts[k]) chips.push([k, DOING[k][0], counts[k]]);
+    if (counts.gate) chips.push(["gate", "Releases and ideas", counts.gate]);
+    // one kind of thing on the list is not a choice worth a row of chips
+    if (chips.length < 3) return null;
+    return (
+      <div className="dk-chips" role="group" aria-label="Kind of work">
+        {chips.map(([k, label, n]) => (
+          <button key={k || "all"} type="button" className={`dk-chip${doing === k ? " on" : ""}`} onClick={() => setDoing(doing === k ? "" : k)}>
+            {label}
+            <i>{n}</i>
+          </button>
+        ))}
+      </div>
+    );
+  }
+
   function Queue() {
-    if (!rows.length) {
+    if (!all.length) {
       return (
         <div className="adm-sec">
           <p>
@@ -320,10 +439,18 @@ export default function DsAdminDesk() {
     return (
       <>
         <p className="adm-lede">
-          {rows.length} thing{rows.length === 1 ? "" : "s"} waiting. Open one, do what it says, and it leaves this
-          list.
+          {mine.length} thing{mine.length === 1 ? "" : "s"} waiting. Open one, do what it says, and it leaves this list.
+          {others ? (
+            <>
+              {" "}
+              <button type="button" className="dk-link" onClick={() => setWho(who === "all" ? "me" : "all")}>
+                {who === "all" ? "Show only mine" : `Also show the ${others} on other people`}
+              </button>
+            </>
+          ) : null}
         </p>
-        <AdmTable cols={queueCols} rows={rows} rowKey={(r) => r._id} onRow={openRow} empty={["Nothing is waiting for you", "When somebody proposes something or puts up a release, it lands here."]} />
+        <Chips />
+        <AdmTable cols={queueCols} rows={rows} rowKey={(r) => r._id} onRow={openRow} empty={["Nothing of that kind is waiting", "Pick another kind, or Everything."]} />
       </>
     );
   }
@@ -378,6 +505,7 @@ export default function DsAdminDesk() {
   /* ------------------------------------------------------------------ done */
 
   const settled = data?.releases?.recent || [];
+  const finished = data?.tasks?.recent || [];
 
   const doneCols = [
     { h: "What it was", cell: (r) => <AdmTwo top={r.displayName || r.productKey} under={`${r.fromVersion || "—"} → ${r.toVersion || "—"}`} /> },
@@ -393,12 +521,41 @@ export default function DsAdminDesk() {
     { h: "Note", cell: (r) => (r.decisionNote ? r.decisionNote : <AdmDim>—</AdmDim>) },
   ];
 
+  const finishedCols = [
+    {
+      h: "Task",
+      cell: (r) => (
+        <span className="dk-what-cell">
+          <AdmChip>{`#${r.n}`}</AdmChip>
+          <AdmTwo top={firstSentence(r.text)} under={r.to !== meKey ? r.owner : ""} />
+        </span>
+      ),
+    },
+    {
+      h: "You said",
+      cell: (r) => {
+        const word = r.answer?.verdict || "done";
+        return <AdmChip tone={word === "dropped" ? "bad" : "ok"}>{(SAID[word] || SAID.done)[0]}</AdmChip>;
+      },
+    },
+    { h: "When", num: true, cell: (r) => <AdmDim>{fullDate(r.doneAt)}</AdmDim> },
+    { h: "Note", cell: (r) => (r.note && r.note !== "done on the desk" ? r.note : <AdmDim>—</AdmDim>) },
+  ];
+
   function Done() {
-    if (!settled.length) return <AdmDim>Nothing decided yet.</AdmDim>;
+    if (!settled.length && !finished.length) return <AdmDim>Nothing decided yet.</AdmDim>;
     return (
       <>
         <p className="adm-lede">What you have decided. Every one is recorded and cannot be altered later.</p>
-        <AdmTable cols={doneCols} rows={settled} rowKey={(r) => String(r._id)} empty={["Nothing decided yet", "What you approve or send back is recorded here."]} />
+        {settled.length ? (
+          <AdmTable cols={doneCols} rows={settled} rowKey={(r) => String(r._id)} empty={["Nothing decided yet", "What you approve or send back is recorded here."]} />
+        ) : null}
+        {finished.length ? (
+          <>
+            <h3 className="dk-h">Tasks finished this month</h3>
+            <AdmTable cols={finishedCols} rows={finished} rowKey={(r) => `task-${r.n}`} empty={["No tasks finished yet", "A task you mark Done leaves the morning digest and lands here."]} />
+          </>
+        ) : null}
       </>
     );
   }
@@ -824,6 +981,96 @@ export default function DsAdminDesk() {
     );
   }
 
+  // A task from the digest. The bot writes a paragraph because Discord gives
+  // it nothing else. Here the paragraph can be what it is — the brief — with
+  // the ask pulled out above it and the links made into buttons. The only
+  // thing the desk adds is the one thing Discord cannot: somewhere to say it
+  // is finished.
+  function Task({ row }) {
+    const d = DOING[row.doing] || DOING.admin;
+    const age = ageDays(row._when, now);
+    const itsMine = !meKey || row.to === meKey;
+    const path = `/admin/team-tasks/${row.n}/answer`;
+    return (
+      <>
+        <div className="dk-tk-head">
+          <span className="dk-tk-doing">{d[0]}</span>
+          <span className={`dk-tk-age${age >= STALE_DAYS ? " old" : ""}`}>
+            {age === 0 ? "came in today" : `waiting ${age} day${age === 1 ? "" : "s"}`}
+          </span>
+        </div>
+        <AdmDim>{d[1]}</AdmDim>
+        {age >= STALE_DAYS ? (
+          <p className="dk-warn">
+            This has been on the list since {new Date(row._when).toLocaleDateString("en-GB", { day: "numeric", month: "long" })} and
+            has been re-sent every morning since. If it is not going to happen, taking it out is also an answer.
+          </p>
+        ) : null}
+        <p className="dk-what">{row.text}</p>
+        {row.signoff || row.sheet || row.link ? (
+          <div className="dk-flow-a">
+            {row.signoff ? (
+              <a href={row.signoff} target="_blank" rel="noreferrer">
+                Open Release sign-off →
+              </a>
+            ) : null}
+            {row.sheet ? (
+              <a href={row.sheet} target="_blank" rel="noreferrer">
+                The test sheet
+              </a>
+            ) : null}
+            {row.link ? (
+              <a href={row.link} target="_blank" rel="noreferrer">
+                Open it →
+              </a>
+            ) : null}
+          </div>
+        ) : null}
+        <h3 className="dk-h">Your answer</h3>
+        {itsMine ? (
+          <AdmDim>Done takes it off tomorrow morning&apos;s digest. Taking it out needs a note saying why.</AdmDim>
+        ) : (
+          <AdmDim>
+            This one is {row.owner || row.to}&apos;s. You are looking at it, not doing it — but chasing is a thing you
+            can do from here.
+          </AdmDim>
+        )}
+        <NoteBox placeholder="A note — needed if you are taking it out" />
+        <div className="adm-acts">
+          <button
+            type="button"
+            className="ds-btn btn-p ds-btn-sm"
+            disabled={busy === path}
+            onClick={() => send(path, { verdict: "done", note: note.trim() }, { after: `Task #${row.n} is finished. It will not be in tomorrow morning's digest.` })}
+          >
+            Done
+          </button>
+          <button
+            type="button"
+            className="ds-btn btn-o ds-btn-sm"
+            disabled={busy === path || row._parked}
+            onClick={() => send(path, { verdict: "waiting", note: note.trim() }, { after: "Parked. It stays on the list but stops counting against you until whoever you are waiting on moves." })}
+          >
+            Waiting on somebody
+          </button>
+          <button
+            type="button"
+            className="ds-btn btn-o ds-btn-sm adm-danger"
+            disabled={busy === path}
+            onClick={() =>
+              send(path, { verdict: "dropped", note: note.trim() }, {
+                needNote: "Say why it is being taken out, so the record says more than that it disappeared.",
+                after: "Taken out. The bot stops asking, and your note says why.",
+              })
+            }
+          >
+            Take it out
+          </button>
+        </div>
+      </>
+    );
+  }
+
   // Widening a rollout puts it on every customer's machine, so it is asked as
   // a question on a panel rather than taken on one click.
   function WidenPanel({ productKey }) {
@@ -865,6 +1112,8 @@ export default function DsAdminDesk() {
         <Release row={current} />
       ) : current._kind === "emergency" ? (
         <Emergency row={current} />
+      ) : current._kind === "task" ? (
+        <Task row={current} />
       ) : current.kind === "setting" ? (
         <Setting row={current} />
       ) : (
@@ -872,21 +1121,24 @@ export default function DsAdminDesk() {
       );
 
     const stamp =
-      current._kind === "release"
-        ? `commit ${current.headSha || "—"}`
-        : current._kind === "idea"
-          ? current.kind
-          : current.kind === "setting"
-            ? "a setting, not a build"
-            : `${current.fromVersion || "—"} → ${current.toVersion || "—"}`;
+      current._kind === "task"
+        ? `task #${current.n} · ${current.owner || current.to}`
+        : current._kind === "release"
+          ? `commit ${current.headSha || "—"}`
+          : current._kind === "idea"
+            ? current.kind
+            : current.kind === "setting"
+              ? "a setting, not a build"
+              : `${current.fromVersion || "—"} → ${current.toVersion || "—"}`;
+
+    const from =
+      current._kind === "task"
+        ? current.from || "the task feed"
+        : (current.preparedBy || current.submittedBy || "").split("@")[0] || "—";
+    const intro = [productsOf(current, labels, meKey), stamp, `from ${from}`].filter(Boolean).join(" · ");
 
     return (
-      <AdmDrawer
-        wide
-        title={titleOf(current)}
-        intro={`${productsOf(current, labels)} · ${stamp} · from ${(current.preparedBy || current.submittedBy || "").split("@")[0] || "—"}`}
-        onClose={close}
-      >
+      <AdmDrawer wide title={titleOf(current)} intro={intro} onClose={close}>
         {body}
       </AdmDrawer>
     );
@@ -916,7 +1168,7 @@ export default function DsAdminDesk() {
       ) : null}
 
       <AdmFilters
-        options={TABS.map(([value, label]) => [value, label, value === "you" && rows.length ? rows.length : null])}
+        options={TABS.map(([value, label]) => [value, label, value === "you" && mine.length ? mine.length : null])}
         current={tab}
         onPick={setTab}
       />

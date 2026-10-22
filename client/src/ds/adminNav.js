@@ -158,6 +158,10 @@ export const NAV = [
     // the <div class="adm-rule"> he separates it with.
     rule: true,
     items: [
+      // Your desk: one queue of everything waiting on the person signed in —
+      // ideas, the website batch, builds, gated settings, emergencies and the
+      // team task feed. Richard's design (adlm-studio.vercel.app/admin/desk).
+      { to: "/admin/desk", label: "Your desk", icon: "hi-check", area: "releases" },
       // Release sign-off (docs/RELEASE_GATE.md): the approver's desk.
       { to: "/admin/releases", label: "Release sign-off", icon: "hi-check", area: "releases" },
       // The work board (docs/WORK_BOARD.md): what is in flight, and approval
