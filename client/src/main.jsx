@@ -184,6 +184,7 @@ const ArchiCADElement = React.lazy(() => import("./pages/ArchiCADElement.jsx"));
 import ProtectedRoute from "./components/ProtectedRoute.jsx";
 import NewBuildGate from "./components/NewBuildGate.jsx";
 import { isGatedPath } from "./lib/classicPaths.js";
+import { DS_PRODUCT_SLUGS } from "./lib/dsPublicPaths.js";
 import AdminRoute from "./components/AdminRoute.jsx";
 
 const TrainingEnrollment = lazyScreen(() => import("./pages/TrainingEnrollment.jsx"));
