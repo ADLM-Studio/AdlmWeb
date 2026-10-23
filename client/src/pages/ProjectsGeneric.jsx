@@ -23,6 +23,11 @@ import "../styles/ds-work-proj.css";
 import WkModal from "../ds/WkModal.jsx";
 import { useFeedback } from "../ds/feedback/feedbackContext.js";
 import {
+  baseItemKey,
+  buildItemKeys,
+  materialDescription,
+} from "../features/projects/lib/itemKeys.js";
+import {
   approvedVariationsEarned,
   approvedVariationsTotal,
   normalizeVariationStatus,
@@ -311,12 +316,9 @@ function getEndpoints(tool) {
   };
 }
 
-function materialDescription(it) {
-  const takeoff = String(it?.takeoffLine || "").trim();
-  const mat = String(it?.materialName || "").trim();
-  if (takeoff || mat) return [takeoff, mat].filter(Boolean).join(" - ");
-  return String(it?.description || "").trim();
-}
+// materialDescription, baseItemKey and buildItemKeys live in
+// features/projects/lib/itemKeys.js (imported above) so the key rule is
+// tested next to the module.
 
 function safeNum(v) {
   const n = Number(v);
@@ -1414,13 +1416,26 @@ export default function ProjectsGeneric() {
   // do something a user would want reporting back — and undoing.
   const fb = useFeedback();
 
+  // The key every per-line override map (rates, actuals, status, category,
+  // trade, stamps) is kept under. Two lines of a QUIV bill can be identical in
+  // sn (the plugin stores 0), code and description, and they used to share
+  // one key: typing a rate on one priced both, and dragging one into a
+  // section moved both. Duplicates now get "#<index>" appended (see
+  // buildItemKeys); a line with no twin keeps exactly the key it had.
+  const keyCacheRef = React.useRef({ items: null, show: null, keys: [] });
+  function keysFor(list) {
+    const c = keyCacheRef.current;
+    if (c.items !== list || c.show !== showMaterials) {
+      c.items = list;
+      c.show = showMaterials;
+      c.keys = buildItemKeys(list, showMaterials);
+    }
+    return c.keys;
+  }
   function itemKey(it, i) {
-    const sn = it?.sn ?? i + 1;
-    const code = String(it?.code || "");
-    const desc = showMaterials
-      ? materialDescription(it)
-      : String(it?.description || "");
-    return `${sn}::${code}::${desc}`;
+    const list = Array.isArray(sel?.items) ? sel.items : null;
+    if (list && list[i] === it) return keysFor(list)[i];
+    return baseItemKey(it, i, showMaterials);
   }
 
   function itemText(it) {
@@ -1487,8 +1502,12 @@ export default function ProjectsGeneric() {
     const baseCategories = {};
     const uiCategories = {};
     const stamps = {};
+    // Keyed straight off this list: `sel` may not hold it yet (a project just
+    // opened is handed here in the same tick as setSel), so itemKey's cache
+    // of sel.items cannot be used.
+    const keys = buildItemKeys(its, showMaterials);
     for (let i = 0; i < its.length; i++) {
-      const k = itemKey(its[i], i);
+      const k = keys[i];
       const r = safeNum(its[i]?.rate);
       // Carry the stored provenance forward so a save that touches one line
       // does not strip the stamp off every other line on the bill.
@@ -1532,7 +1551,7 @@ export default function ProjectsGeneric() {
     const baseTrades = {};
     const uiTrades = {};
     for (let i = 0; i < its.length; i++) {
-      const k = itemKey(its[i], i);
+      const k = keys[i];
       const t =
         String(its[i]?.trade || "").trim() ||
         deriveItemTrade(its[i], toolNorm);
@@ -1660,7 +1679,7 @@ export default function ProjectsGeneric() {
         const cacheVal = parseOptionalNumber(v);
         // Only restore from cache if the server item has never had actuals
         // recorded — if actualRecordedAt is set, the server value is authoritative.
-        const idx = its.findIndex((it, i) => itemKey(it, i) === k);
+        const idx = keys.indexOf(k);
         const serverEverRecorded = idx >= 0 && its[idx]?.actualRecordedAt != null;
         if (!serverEverRecorded && serverVal == null && cacheVal != null) {
           nextActualQty[k] = actualInputValue(cacheVal);
@@ -1676,7 +1695,7 @@ export default function ProjectsGeneric() {
         const cacheVal = parseOptionalNumber(v);
         // Only restore from cache if the server item has never had actuals
         // recorded — if actualRecordedAt is set, the server value is authoritative.
-        const idx = its.findIndex((it, i) => itemKey(it, i) === k);
+        const idx = keys.indexOf(k);
         const serverEverRecorded = idx >= 0 && its[idx]?.actualRecordedAt != null;
         if (!serverEverRecorded && serverVal == null && cacheVal != null) {
           nextActualRate[k] = actualInputValue(cacheVal);
@@ -2877,6 +2896,126 @@ export default function ProjectsGeneric() {
       }));
     });
   }
+  // ── Filing a line under a section is saved at once ──────────────────────
+  // Adding a section persists on its own (handleAddCategory) and the drop's
+  // toast says "Moved to X", but the move itself used to sit in the category
+  // map until someone pressed Save changes, so a reload after the drag put
+  // every line back where it was. (Seen live at the Melodiva Projects demo,
+  // 10 Oct 2026.) Now a category or trade change — a drop on a section, a
+  // drop on a row in another section, the row's own Category picker — is
+  // written to the project after 700 ms of quiet, one PUT in flight at a
+  // time. It sends the lines as stored with only the category/trade
+  // overrides folded in, in the order on screen (so a drop that also
+  // reordered keeps its place); pending rates, actuals and progress stay
+  // pending for Save changes exactly as before.
+  const latestRef = React.useRef({});
+  latestRef.current = {
+    sel,
+    categoryMap,
+    tradeMap,
+    baseCategoryMap,
+    baseTradeMap,
+    accessToken,
+    selectedId,
+    saving,
+  };
+  const filingRef = React.useRef({ timer: null, inFlight: false, again: false });
+  React.useEffect(() => {
+    const f = filingRef.current;
+    return () => {
+      if (f.timer) clearTimeout(f.timer);
+    };
+  }, []);
+  function scheduleFilingSave() {
+    const f = filingRef.current;
+    if (f.timer) clearTimeout(f.timer);
+    f.timer = setTimeout(() => {
+      f.timer = null;
+      runFilingSave();
+    }, 700);
+  }
+  async function runFilingSave() {
+    const f = filingRef.current;
+    const cur = latestRef.current;
+    // Save changes is on the wire: it carries every pending section itself
+    // (its payload reads the same maps), so there is nothing left to send.
+    if (cur.saving) return;
+    // A filing save is on the wire: go again once it lands.
+    if (f.inFlight) {
+      f.again = true;
+      return;
+    }
+    // Nothing pending (Save changes got there first): nothing to write.
+    if (
+      categoryMapsEqual(cur.categoryMap, cur.baseCategoryMap) &&
+      categoryMapsEqual(cur.tradeMap, cur.baseTradeMap)
+    ) {
+      return;
+    }
+    const project = cur.sel;
+    const id = cur.selectedId;
+    if (!project || !id || !cur.accessToken) return;
+    const its = Array.isArray(project.items) ? project.items : [];
+    const keys = buildItemKeys(its, showMaterials);
+    const nextItems = its.map((it, i) => {
+      const k = keys[i];
+      return {
+        ...it,
+        category:
+          String(cur.categoryMap?.[k] ?? "").trim() ||
+          String(it?.category || "").trim(),
+        trade:
+          String(cur.tradeMap?.[k] ?? "").trim() ||
+          String(it?.trade || "").trim(),
+      };
+    });
+    f.inFlight = true;
+    try {
+      const updated = await apiAuthed(endpoints.one(id), {
+        token: cur.accessToken,
+        method: "PUT",
+        body: { baseVersion: project.version, items: nextItems },
+      });
+      // The reader may have opened another project while this was away.
+      if (latestRef.current.selectedId !== id) return;
+      setSel(updated);
+      // The sections just written are the stored ones now, so Save changes
+      // must stop counting them as pending. The maps themselves are left
+      // alone: the override and the stored value agree.
+      setBaseCategoryMap((prev) => {
+        const next = { ...(prev || {}) };
+        keys.forEach((k, i) => {
+          next[k] = nextItems[i].category;
+        });
+        return next;
+      });
+      setBaseTradeMap((prev) => {
+        const next = { ...(prev || {}) };
+        keys.forEach((k, i) => {
+          next[k] = nextItems[i].trade;
+        });
+        return next;
+      });
+      // The order went with it, unless the lines moved again meanwhile.
+      if (latestRef.current.sel?.items === its) setOrderDirty(false);
+    } catch (e) {
+      const msg = String(e?.message || "");
+      // The change is still on screen and still pending, so Save changes
+      // will carry it; the reader is told why it did not go on its own.
+      setErr(
+        /conflict/i.test(msg)
+          ? "Couldn't save the section change just now: the project changed while it was being saved. Press Save changes to try again."
+          : `Couldn't save the section change${msg ? ` (${msg})` : ""}. Press Save changes to try again.`,
+      );
+    } finally {
+      f.inFlight = false;
+      if (f.again) {
+        f.again = false;
+        scheduleFilingSave();
+      }
+    }
+  }
+
   function handleCategoryChange(rowIndex, category) {
     if (!sel) return;
     const its = Array.isArray(sel?.items) ? sel.items : [];
@@ -2887,6 +3026,7 @@ export default function ProjectsGeneric() {
       ...(prev || {}),
       [key]: String(category || ""),
     }));
+    scheduleFilingSave();
   }
   function handleTradeChange(rowIndex, trade) {
     if (!sel) return;
@@ -2898,6 +3038,7 @@ export default function ProjectsGeneric() {
       ...(prev || {}),
       [key]: String(trade || ""),
     }));
+    scheduleFilingSave();
   }
   function handleStatusToggle(rowIndex, checked) {
     if (!sel) return;
