@@ -69,7 +69,8 @@ const ADLM = {
   logo: "/ds/logo-light.svg",
   mark: "/ds/mark.svg", // icon only. The watermark is never the lockup
   site: "www.adlmstudio.net",
-  social: "ADLM Studio",
+  phone: "+234 810 650 3524",
+  social: "@adlmstudio",
 
   /* The registered office, and the number it is registered under.
      A letter on a letterhead that carries neither is a letter from nobody in
@@ -116,6 +117,7 @@ function brandOf(spec) {
     b.logo = null;
     b.mark = null;
     b.site = "";
+    b.phone = "";
     b.social = "";
     b.bank = null;
     b.name = (given && given.name) || "Your practice";
@@ -170,26 +172,35 @@ const TEMPLATES = {
 
 // ── chrome ─────────────────────────────────────────────────────────────────
 
-const GLOBE =
-  '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm0 2c1.6 0 3 2.8 3 6H9c0-3.2 1.4-6 3-6zM4.3 11H7c.1-2 .5-3.8 1.2-5.2A8 8 0 004.3 11zm0 2a8 8 0 003.9 5.2A13 13 0 017 13H4.3zm4.7 0h6c-.1 3.2-1.4 6-3 6s-2.9-2.8-3-6zm7.8 0h2.9a8 8 0 01-3.9 5.2c.6-1.4 1-3.2 1-5.2zm0-2c0-2-.4-3.8-1-5.2a8 8 0 013.9 5.2H16.8z"/></svg>';
+// The real Hugeicons, read out of @hugeicons/core-free-icons: Globe02 for the
+// website, Call02 for the phone, Location01 for the address and Instagram for
+// the handle. They are stroked, not filled, which is how the set is drawn; the
+// two shapes that used to sit here were filled approximations.
+const hugeicon = (d) =>
+  '<svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" ' +
+  `stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">${d}</svg>`;
 
-const SOCIAL = ["i-in", "i-ig", "i-yt", "i-x"];
-
-const socialDots = () =>
-  SOCIAL.map(
-    (id) =>
-      '<svg viewBox="0 0 24 24" style="width:7.7pt;height:7.7pt;flex:none;' +
-      'fill:none;stroke:currentColor;stroke-width:1.8;display:block"><use href="#' +
-      `${id}"/></svg>`,
-  ).join("");
+const GLOBE = hugeicon(
+  '<path d="M8 12C8 18 12 22 12 22C12 22 16 18 16 12C16 6 12 2 12 2C12 2 8 6 8 12Z"/>' +
+    '<path d="M21 15H3"/><path d="M21 9H3"/>' +
+    '<path d="M22 12C22 6.47715 17.5228 2 12 2C6.47715 2 2 6.47715 2 12C2 17.5228 6.47715 22 12 22C17.5228 22 22 17.5228 22 12Z"/>',
+);
+const CALL = hugeicon(
+  '<path d="M9.1585 5.71217L8.75584 4.80619C8.49256 4.21382 8.36092 3.91762 8.16405 3.69095C7.91732 3.40688 7.59571 3.19788 7.23592 3.08779C6.94883 2.99994 6.6247 2.99994 5.97645 2.99994C5.02815 2.99994 4.554 2.99994 4.15597 3.18223C3.68711 3.39696 3.26368 3.86322 3.09497 4.35054C2.95175 4.76423 2.99278 5.18937 3.07482 6.03964C3.94815 15.0901 8.91006 20.052 17.9605 20.9254C18.8108 21.0074 19.236 21.0484 19.6496 20.9052C20.137 20.7365 20.6032 20.3131 20.818 19.8442C21.0002 19.4462 21.0002 18.972 21.0002 18.0237C21.0002 17.3755 21.0002 17.0514 20.9124 16.7643C20.8023 16.4045 20.5933 16.0829 20.3092 15.8361C20.0826 15.6393 19.7864 15.5076 19.194 15.2443L18.288 14.8417C17.6465 14.5566 17.3257 14.414 16.9998 14.383C16.6878 14.3533 16.3733 14.3971 16.0813 14.5108C15.7762 14.6296 15.5066 14.8543 14.9672 15.3038C14.4304 15.7511 14.162 15.9748 13.834 16.0946C13.5432 16.2009 13.1588 16.2402 12.8526 16.1951C12.5071 16.1442 12.2426 16.0028 11.7135 15.7201C10.0675 14.8404 9.15977 13.9327 8.28011 12.2867C7.99738 11.7576 7.85602 11.4931 7.80511 11.1476C7.75998 10.8414 7.79932 10.457 7.90554 10.1662C8.02536 9.83822 8.24905 9.5698 8.69643 9.03294C9.14586 8.49362 9.37058 8.22396 9.48939 7.91885C9.60309 7.62688 9.64686 7.31234 9.61719 7.00042C9.58618 6.67446 9.44362 6.3537 9.1585 5.71217Z"/>',
+);
+const PIN = hugeicon(
+  '<path d="M13.6177 21.367C13.1841 21.773 12.6044 22 12.0011 22C11.3978 22 10.8182 21.773 10.3845 21.367C6.41302 17.626 1.09076 13.4469 3.68627 7.37966C5.08963 4.09916 8.45834 2 12.0011 2C15.5439 2 18.9126 4.09916 20.316 7.37966C22.9082 13.4393 17.599 17.6389 13.6177 21.367Z"/>' +
+    '<path d="M15.5 11C15.5 12.933 13.933 14.5 12 14.5C10.067 14.5 8.5 12.933 8.5 11C8.5 9.067 10.067 7.5 12 7.5C13.933 7.5 15.5 9.067 15.5 11Z"/>',
+);
+const IG = hugeicon(
+  '<path d="M3 12C3 7.75736 3 5.63604 4.31802 4.31802C5.63604 3 7.75736 3 12 3C16.2426 3 18.364 3 19.682 4.31802C21 5.63604 21 7.75736 21 12C21 16.2426 21 18.364 19.682 19.682C18.364 21 16.2426 21 12 21C7.75736 21 5.63604 21 4.31802 19.682C3 18.364 3 16.2426 3 12Z"/>' +
+    '<path d="M16 12C16 14.2091 14.2091 16 12 16C9.79086 16 8 14.2091 8 12C8 9.79086 9.79086 8 12 8C14.2091 8 16 9.79086 16 12Z"/>' +
+    '<path d="M17.3748 6.75024H17.2498"/>',
+);
 
 // A practice that has not uploaded a mark still needs a letterhead. Falling
 // back to ADLM's logo would put our brand on their paper, so the name is set
 // as a wordmark instead.
-const PIN =
-  '<svg viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path d="M12 2a7 7 0 0 0-7 7c0 5 7 13 7 13s7-8 7-13a7 7 0 0 0-7-7Zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5Z"/></svg>';
-
 function lockup(brand, h) {
   if (brand.logo) {
     return `<img class="doc-logo" src="${esc(brand.logo)}" alt="${esc(brand.name)}" style="height:${h}pt">`;
@@ -201,29 +212,11 @@ function frame(t, brand, page, pages) {
   let h = '<div class="doc-frame">';
   if (t.band) {
     h += '<div class="doc-band"></div>';
+    // Only the two things somebody reaches for while reading: where to look
+    // it up, and what to ring. Everything else is footer (Richard, 5 Oct 2026).
     let contact = "";
     if (brand.site) contact += `<div>${GLOBE}<span>${esc(brand.site)}</span></div>`;
-    if (brand.social) {
-      contact +=
-        `<div><span class="doc-social">${socialDots()}</span>` +
-        `<span>${esc(brand.social)}</span></div>`;
-    }
-    (brand.lines || []).forEach((l) => {
-      contact += `<div><span>${esc(l)}</span></div>`;
-    });
-    // The address sits under the contact lines, its pin drawn once against the
-    // first line so a two-line address reads as one address rather than two
-    // entries.
-    let addr = brand.address;
-    if (typeof addr === "string") addr = [addr];
-    if (addr && addr.length) {
-      contact +=
-        `<div class="doc-place">${PIN}<span>` +
-        `${addr.map(esc).join("<br>")}</span></div>`;
-    }
-    if (brand.reg) {
-      contact += `<div class="doc-reg"><span>${esc(brand.reg)}</span></div>`;
-    }
+    if (brand.phone) contact += `<div>${CALL}<span>${esc(brand.phone)}</span></div>`;
     h +=
       `<div class="doc-head">${lockup(brand, 26.6)}` +
       (contact ? `<div class="doc-contact">${contact}</div>` : "") +
@@ -238,10 +231,25 @@ function frame(t, brand, page, pages) {
     '<div class="doc-mark doc-m-x"></div>' +
     (brand.mark ? `<div class="doc-mark doc-m-logo"><img src="${esc(brand.mark)}" alt=""></div>` : "");
   h += '<div class="doc-rule"></div>';
+  // The small print: the registered address, the handle, the registration
+  // number where there is one. A letterhead needs them on the sheet; it does
+  // not need them above the first line of the letter.
+  let foot = "";
+  let addr = brand.address;
+  if (typeof addr === "string") addr = [addr];
+  if (addr && addr.length) {
+    foot += `<span class="doc-foot-i">${PIN}<span>${addr.map(esc).join(" ")}</span></span>`;
+  }
+  if (brand.social) foot += `<span class="doc-foot-i">${IG}<span>${esc(brand.social)}</span></span>`;
+  if (brand.reg) foot += `<span class="doc-foot-i">${esc(brand.reg)}</span>`;
+  (brand.lines || []).forEach((l) => {
+    foot += `<span class="doc-foot-i">${esc(l)}</span>`;
+  });
   h +=
     '<div class="doc-pagefoot">' +
+    `<span class="doc-foot">${foot}</span>` +
     `<span class="doc-credit">${brand.credit ? "Powered by ADLM Studio" : ""}</span>` +
-    `<span>Page ${page} of ${pages}</span>` +
+    `<span class="doc-pageno">Page ${page} of ${pages}</span>` +
     "</div>";
   return `${h}</div>`;
 }

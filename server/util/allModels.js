@@ -72,6 +72,7 @@ import "../models/DemoModel.js";
 import "../models/Referral.js";
 import "../models/ReleaseBatch.js";
 import "../models/ReleaseCandidate.js";
+import "../models/TeamTask.js";
 import "../models/ReleaseGateConfig.js";
 import "../models/ReleaseNotice.js";
 import "../models/Role.js";
