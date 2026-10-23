@@ -403,3 +403,16 @@ describe("answering a flow on a long sheet", () => {
     expect(stillLive.length).toBeGreaterThan(9);
   });
 });
+
+// A row whose date the server could not give us — a Design Access placeholder,
+// or a task the ledger sent without one — printed "NaN days" in the Waiting
+// column. Richard saw a screenful of it.
+it("says nothing rather than NaN when a date is missing or unusable", async () => {
+  serve({
+    items: [idea],
+    awaitingReview: [{ ...emergency, reviewDueAt: "not-a-date" }],
+  });
+  mount();
+  await waitFor(() => expect(screen.getByText("Auto take-off with AI")).toBeTruthy());
+  expect(document.body.textContent).not.toMatch(/NaN/);
+});

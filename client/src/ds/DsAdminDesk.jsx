@@ -154,7 +154,12 @@ function ageDays(when, now) {
 
 function daysSince(when, now) {
   if (!when) return "";
-  const n = Math.round((now - new Date(when)) / 86400000);
+  // A date the server could not give us — a placeholder row under Design
+  // Access, or a task the ledger sent without one — must not print "NaN days"
+  // at him. Saying nothing is honest; NaN is just broken.
+  const then = new Date(when);
+  if (isNaN(then.getTime())) return "";
+  const n = Math.round((now - then) / 86400000);
   if (n <= 0) return "today";
   if (n === 1) return "yesterday";
   return `${n} days`;
@@ -162,7 +167,9 @@ function daysSince(when, now) {
 
 function hoursUntil(when, now) {
   if (!when) return null;
-  return Math.round((new Date(when) - now) / 3600000);
+  const at = new Date(when);
+  if (isNaN(at.getTime())) return null;
+  return Math.round((at - now) / 3600000);
 }
 
 function notesOf(row) {
