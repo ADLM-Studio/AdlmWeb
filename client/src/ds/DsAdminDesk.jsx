@@ -154,7 +154,12 @@ function ageDays(when, now) {
 
 function daysSince(when, now) {
   if (!when) return "";
-  const n = Math.round((now - new Date(when)) / 86400000);
+  // A date the server could not give us — a placeholder row under Design
+  // Access, or a task the ledger sent without one — must not print "NaN days"
+  // at him. Saying nothing is honest; NaN is just broken.
+  const then = new Date(when);
+  if (isNaN(then.getTime())) return "";
+  const n = Math.round((now - then) / 86400000);
   if (n <= 0) return "today";
   if (n === 1) return "yesterday";
   return `${n} days`;
@@ -162,7 +167,9 @@ function daysSince(when, now) {
 
 function hoursUntil(when, now) {
   if (!when) return null;
-  return Math.round((new Date(when) - now) / 3600000);
+  const at = new Date(when);
+  if (isNaN(at.getTime())) return null;
+  return Math.round((at - now) / 3600000);
 }
 
 function notesOf(row) {
@@ -295,6 +302,13 @@ export default function DsAdminDesk() {
   const [error, setError] = React.useState("");
   const [open, setOpen] = React.useState(null);
   const [busy, setBusy] = React.useState("");
+  // Answers given since the drawer opened, by flow key. They are written here
+  // first so the sheet updates under the finger; the server is told straight
+  // after and only disagrees if it refuses, which it cannot for a verdict.
+  const [answered, setAnswered] = React.useState({});
+  // The one button mid-flight. A set, not a flag, so two quick answers do not
+  // disable each other.
+  const [saving, setSaving] = React.useState({});
   const [note, setNote] = React.useState("");
   const [rollout, setRollout] = React.useState("");
   // Which kind of work he is looking at, and whose. Two filters, because the
@@ -349,12 +363,18 @@ export default function DsAdminDesk() {
   // against one thing can never be posted against another.
   function openRow(row) {
     setOpen(row._id);
+    setAnswered({});
     setNote("");
     setRollout(row.rollout || "organizations");
   }
   function close() {
     setOpen(null);
     setNote("");
+    // The queue can only have changed in ways that matter once he leaves the
+    // thing he was working through, so this is where the desk catches up.
+    const dirty = Object.keys(answered).length > 0;
+    setAnswered({});
+    if (dirty) load();
   }
 
   async function send(path, body, { needNote, after } = {}) {
@@ -648,21 +668,34 @@ export default function DsAdminDesk() {
   function Release({ row }) {
     const flows = (row.items || []).filter((i) => i.kind !== "behind-the-scenes");
     const behind = (row.items || []).filter((i) => i.kind === "behind-the-scenes");
-    const done = flows.filter((f) => f.verdict).length;
+    const done = flows.filter((f) => (f.key in answered ? answered[f.key] : f.verdict)).length;
     const left = flows.length - done;
 
     const verdict = async (key, word) => {
       const path = `/admin/releases/batch/${row._id}/verdict`;
-      setBusy(`${path}:${key}`);
+      const before = answered[key];
+      // Shown first. On a sheet this long, an answer that waits for the
+      // network to agree reads as a dead button.
+      setAnswered((a) => ({ ...a, [key]: word }));
+      setSaving((p) => ({ ...p, [key]: true }));
       try {
         await apiAuthed(path, { method: "POST", body: { key, verdict: word } });
-        await load();
       } catch (e) {
-        say(e?.data?.error || e?.message || "That did not save.", "bad");
+        // Put it back the way it was rather than leave a tick over an answer
+        // that never landed.
+        setAnswered((a) => ({ ...a, [key]: before }));
+        say(e?.data?.error || e?.message || "That did not save. Try it again.", "bad");
       } finally {
-        setBusy("");
+        setSaving((p) => {
+          const n = { ...p };
+          delete n[key];
+          return n;
+        });
       }
     };
+
+    // what the sheet shows: his answer this session, else the stored one
+    const verdictOf = (f) => (f.key in answered ? answered[f.key] : f.verdict);
 
     return (
       <>
@@ -678,7 +711,7 @@ export default function DsAdminDesk() {
         {flows.map((f, i) => {
           const set = f.kind === "not-in-design" ? KEEP : VERDICTS;
           return (
-            <section key={f.key} className={`dk-flow${f.verdict ? " is-done" : ""}`}>
+            <section key={f.key} className={`dk-flow${verdictOf(f) ? " is-done" : ""}`}>
               <h4>
                 <span className="dk-no">{i + 1}</span>
                 {f.title}
@@ -711,11 +744,11 @@ export default function DsAdminDesk() {
                   <button
                     key={v[0]}
                     type="button"
-                    className={`ds-btn btn-o ds-btn-sm${f.verdict === v[0] ? " on" : ""}`}
-                    disabled={busy.startsWith(`/admin/releases/batch/${row._id}/verdict`)}
+                    className={`ds-btn btn-o ds-btn-sm${verdictOf(f) === v[0] ? " on" : ""}`}
+                    disabled={!!saving[f.key]}
                     onClick={() => verdict(f.key, v[0])}
                   >
-                    {v[1]}
+                    {saving[f.key] && verdictOf(f) === v[0] ? "Saving…" : v[1]}
                   </button>
                 ))}
               </div>
