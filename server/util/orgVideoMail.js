@@ -17,12 +17,14 @@
 import { sendMail } from "./mailer.js";
 import { wrapEmail } from "./emailLayout.js";
 import { User } from "../models/User.js";
-import { orgKeyOf } from "../models/OrgVideo.js";
+import { firmOnRecordFilter, belongsToFirm } from "./firmAccounts.js";
 
 const SITE = process.env.PUBLIC_SITE_URL || "https://www.adlmstudio.net";
-// Where the shelf lives. The old Dashboard on the public build; overridable
-// for a build that keeps it somewhere else.
-const WATCH_PATH = process.env.ORG_VIDEO_WATCH_PATH || "/dashboard#org-videos";
+// Where the shelf lives: the Learning screen of the customer dashboard.
+// (/dashboard now redirects to /manage, which has no shelf, so the old
+// default sent the "Watch it now" button to the wrong page.) Overridable for
+// a build that keeps it somewhere else.
+const WATCH_PATH = process.env.ORG_VIDEO_WATCH_PATH || "/dash-learning#org-videos";
 // Where an account sees its seats. The old Dashboard on the public build; the
 // new design has a Team screen, set through the same kind of override.
 const SEATS_PATH = process.env.ACCOUNT_SEATS_PATH || "/dashboard";
@@ -44,22 +46,22 @@ const p = (html) =>
   `<p style="margin:0 0 14px;font-family:Arial,Helvetica,sans-serif;font-size:15px;line-height:1.6;color:#0E1620">${html}</p>`;
 const first = (name) => String(name || "").trim().split(/\s+/)[0] || "there";
 
-/** Every account that would see this firm's shelf. */
-async function accountsFor(orgKey) {
-  const users = await User.find(
-    {
-      disabled: { $ne: true },
-      $or: [
-        { "entitlements.organizationName": { $exists: true, $nin: [null, ""] } },
-        { organizationName: { $exists: true, $nin: [null, ""] } },
-      ],
-    },
+/** The page the "Watch it now" button opens. */
+export function watchUrl() {
+  return `${SITE}${WATCH_PATH}`;
+}
+
+/**
+ * Every account that would see this firm's shelf. `find` is injectable so the
+ * selection can be tested without a database; it defaults to User.find.
+ */
+export async function accountsFor(orgKey, { find } = {}) {
+  const query = async (filter, projection) => User.find(filter, projection).lean();
+  const users = await (find || query)(
+    { disabled: { $ne: true }, ...firmOnRecordFilter() },
     { email: 1, firstName: 1, username: 1, organizationName: 1, "entitlements.organizationName": 1 },
-  ).lean();
-  return users.filter((u) => {
-    if (orgKeyOf(u.organizationName) === orgKey) return true;
-    return (u.entitlements || []).some((e) => orgKeyOf(e.organizationName) === orgKey);
-  });
+  );
+  return users.filter((u) => belongsToFirm(u, orgKey));
 }
 
 /**
@@ -70,7 +72,7 @@ export async function notifyOrgVideoReady(doc) {
   try {
     const people = await accountsFor(doc.orgKey);
     if (!people.length) return { sent: 0 };
-    const watch = `${SITE}${WATCH_PATH}`;
+    const watch = watchUrl();
     let sent = 0;
     for (const u of people) {
       if (!u.email) continue;

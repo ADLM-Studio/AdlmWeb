@@ -41,6 +41,7 @@ import {
 } from "../utils/orgVideoStorage.js";
 import { deleteFromR2 } from "../utils/r2Upload.js";
 import { notifyOrgVideoReady } from "../util/orgVideoMail.js";
+import { firmOnRecordFilter, summariseFirms } from "../util/firmAccounts.js";
 
 const router = express.Router();
 router.use(requireAuth, requirePermission("orgvideos"));
@@ -248,49 +249,12 @@ router.get("/", async (req, res) => {
 // with no licence yet can still be typed in.
 router.get("/organisations", async (_req, res) => {
   try {
-    const users = await User.find(
-      {
-        $or: [
-          { "entitlements.organizationName": { $exists: true, $nin: [null, ""] } },
-          { organizationName: { $exists: true, $nin: [null, ""] } },
-        ],
-      },
-      { organizationName: 1, "entitlements.organizationName": 1, "entitlements.status": 1 },
-    ).lean();
-
-    const firms = new Map(); // key -> { name, people, live }
-    const add = (name) => {
-      const n = clean(name, 120);
-      const key = orgKeyOf(n);
-      if (!key) return;
-      const f = firms.get(key) || { name: n, key, people: new Set(), live: 0 };
-      firms.set(key, f);
-      return f;
-    };
-    for (const u of users) {
-      const seen = new Set();
-      if (u.organizationName) {
-        const f = add(u.organizationName);
-        if (f) {
-          f.people.add(String(u._id));
-          seen.add(f.key);
-        }
-      }
-      for (const e of u.entitlements || []) {
-        const f = add(e.organizationName);
-        if (!f) continue;
-        f.people.add(String(u._id));
-        if (String(e.status).toLowerCase() === "active" && !seen.has(f.key)) {
-          f.live += 1;
-          seen.add(f.key);
-        }
-      }
-    }
-
-    const items = [...firms.values()]
-      .map((f) => ({ name: f.name, key: f.key, people: f.people.size, live: f.live }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return res.json({ ok: true, items });
+    const users = await User.find(firmOnRecordFilter(), {
+      organizationName: 1,
+      "entitlements.organizationName": 1,
+      "entitlements.status": 1,
+    }).lean();
+    return res.json({ ok: true, items: summariseFirms(users) });
   } catch (err) {
     console.error("[admin.orgVideos] organisations failed:", err);
     return res.status(500).json({ ok: false, error: "Server error" });
