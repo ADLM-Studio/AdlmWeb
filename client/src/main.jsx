@@ -38,7 +38,7 @@ import AppError from "./pages/AppError.jsx";
 import Home from "./pages/Home.jsx";
 import Products from "./pages/Products.jsx";
 import Quote from "./pages/Quote.jsx";
-import ProductDetail from "./pages/ProductDetail.jsx";
+import DsProductRoute from "./ds/DsProductRoute.jsx";
 import Login from "./pages/Login.jsx";
 import AdminLogin from "./pages/AdminLogin.jsx";
 const AdminToday = lazyScreen(() => import("./pages/AdminToday.jsx"));
@@ -48,6 +48,7 @@ const AdminPeople = lazyScreen(() => import("./pages/AdminPeople.jsx"));
 const AdminEnrolments = lazyScreen(() => import("./pages/AdminEnrolments.jsx"));
 const AdminSubmissions = lazyScreen(() => import("./pages/AdminSubmissions.jsx"));
 const AdminFollowUpsDesk = lazyScreen(() => import("./pages/AdminFollowUpsDesk.jsx"));
+const DsAdminProspecting = lazyScreen(() => import("./ds/DsAdminProspecting.jsx"));
 const AdminReferrals = lazyScreen(() => import("./pages/AdminReferrals.jsx"));
 const AdminDemoModels = lazyScreen(() => import("./pages/AdminDemoModels.jsx"));
 const AdminDsOrganisations = lazyScreen(() => import("./pages/AdminDsOrganisations.jsx"));
@@ -157,6 +158,7 @@ const ManageBilling = React.lazy(() => import("./pages/ManageBilling.jsx"));
 const ManageDownloads = React.lazy(() => import("./pages/ManageDownloads.jsx"));
 const ManageGuides = React.lazy(() => import("./pages/ManageGuides.jsx"));
 const ManageSettings = React.lazy(() => import("./pages/ManageSettings.jsx"));
+const ManageActivity = React.lazy(() => import("./pages/ManageActivity.jsx"));
 const WorkHome = React.lazy(() => import("./pages/WorkHome.jsx"));
 const WorkProjects = React.lazy(() => import("./pages/WorkProjects.jsx"));
 const WorkTool = React.lazy(() => import("./pages/WorkTool.jsx"));
@@ -259,11 +261,19 @@ const DsSignupPage = lazyScreen(() => import("./ds/custom/DsSignupPage.jsx"));
 const DsTrainings = lazyScreen(() => import("./ds/custom/DsTrainings.jsx"));
 const DsTrainingSignup = lazyScreen(() => import("./ds/custom/DsTrainingSignup.jsx"));
 const DsAdminReleases = lazyScreen(() => import("./ds/DsAdminReleases.jsx"));
+const DsAdminDesk = lazyScreen(() => import("./ds/DsAdminDesk.jsx"));
 
 const dsPublic = (slug) => (
   <React.Suspense fallback={null}>
     <DsShellLazy>{dsPage(slug)}</DsShellLazy>
   </React.Suspense>
+);
+// His six product pages, by slug, for /product/:key.
+const DS_PRODUCT_PAGES = Object.fromEntries(
+  ["quiv", "heron", "rategen", "mep", "timepro", "civiq"].map((slug) => [
+    slug,
+    DS_PAGES.find((p) => p.slug === slug)?.Component,
+  ]),
 );
 const BEYOND_BIM_SOON = (
   <DsComingSoon
@@ -304,13 +314,22 @@ const router = createBrowserRouter([
 
       { path: "products", element: dsPublic("products") },
       { path: "quote", element: dsPublic("quote") },
-      // His six product pages at their catalogue paths. Static segments outrank
-      // ":key", so these win and every other key keeps the classic page.
-      ...Object.entries(DS_PRODUCT_SLUGS).map(([key, slug]) => ({
-        path: `product/${key}`,
-        element: dsPublic(slug),
-      })),
-      { path: "product/:key", element: <ProductDetail /> },
+      // Retired the classic ProductDetail on 7 Oct 2026: his product pages
+      // for the six products, courses to /learn, anything else to /products.
+      // See ds/DsProductRoute.jsx.
+      {
+        path: "product/:key",
+        element: (
+          <DsProductRoute
+            pages={DS_PRODUCT_PAGES}
+            wrap={(page) => (
+              <React.Suspense fallback={null}>
+                <DsShellLazy>{page}</DsShellLazy>
+              </React.Suspense>
+            )}
+          />
+        ),
+      },
 
       ...landingRoutes,
 
@@ -448,6 +467,10 @@ const router = createBrowserRouter([
         { path: "manage/downloads", el: <ManageDownloads /> },
         { path: "manage/guides", el: <ManageGuides /> },
         { path: "manage/settings", el: <ManageSettings /> },
+        // The full activity trail. Without this route the overview's "All
+        // activity" link had nowhere in the new build to go and pointed at the
+        // classic Profile page instead.
+        { path: "manage/activity", el: <ManageActivity /> },
         // The Work group. Organised by project rather than by product, which
         // is the whole architectural point of the surface.
         { path: "work", el: <WorkHome /> },
@@ -1216,6 +1239,19 @@ const router = createBrowserRouter([
         ),
       },
 
+      // ✅ Your desk: one queue for everything waiting on the approver — the
+      //    ideas from the work board, the website batch, plugin builds, gated
+      //    settings and emergency reviews. Same audience and same permission as
+      //    the two screens it draws from; it adds no endpoint of its own.
+      {
+        path: "admin/desk",
+        element: (
+          <AdminRoute permission="releases">
+            <DsAdminDesk />
+          </AdminRoute>
+        ),
+      },
+
       // ✅ Release sign-off (docs/RELEASE_GATE.md): super-admins + the release approver
       {
         path: "admin/releases",
@@ -1293,6 +1329,17 @@ const router = createBrowserRouter([
         element: (
           <AdminRoute permission="followups">
             <AdminFollowUpsDesk />
+          </AdminRoute>
+        ),
+      },
+
+      // ✅ Outbound prospecting review — staff-grantable ("prospecting" area);
+      // the admin-only parts inside check "prospecting_admin" themselves
+      {
+        path: "admin/prospecting",
+        element: (
+          <AdminRoute permission="prospecting">
+            <DsAdminProspecting />
           </AdminRoute>
         ),
       },

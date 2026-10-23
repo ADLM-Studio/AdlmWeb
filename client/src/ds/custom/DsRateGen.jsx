@@ -8,8 +8,8 @@
 //   d.priceLine   his yearly / saving / install sentence, rebuilt from the same
 //   d.latest      the hero's version line, from ../productBuilds.js
 //
-// The fallbacks are his own published figures, so the page reads correctly
-// before the fetch lands and if it fails.
+// The fallback is the shared table in ../catalogueFallback.js, so the page
+// reads correctly before the fetch lands and if it fails.
 
 import React from "react";
 import DsRateGenPage from "../pages/DsRateGenPage.jsx";
@@ -19,7 +19,7 @@ import { useProductPricing } from "../useProductPricing.js";
 import { latestLabel, PRODUCT_BUILDS } from "../productBuilds.js";
 
 export default function DsRateGen() {
-  const price = useProductPricing("rategen", { monthly: 20000, yearly: 200000, install: 0 });
+  const price = useProductPricing("rategen");
   return (
     <DsRateGenPage
       d={{

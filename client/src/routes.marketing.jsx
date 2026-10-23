@@ -41,15 +41,14 @@ import DsAbout from "./ds/pages/DsAbout.jsx";
 import DsLearn from "./ds/custom/DsLearn.jsx";
 import DsWhatsNew from "./ds/custom/DsWhatsNew.jsx";
 import DsTrainings from "./ds/custom/DsTrainings.jsx";
+import DsProductRoute from "./ds/DsProductRoute.jsx";
 import DsQuiv from "./ds/custom/DsQuiv.jsx";
 import DsHeron from "./ds/custom/DsHeron.jsx";
 import DsRateGen from "./ds/custom/DsRateGen.jsx";
 import DsMep from "./ds/custom/DsMep.jsx";
 import DsTimePro from "./ds/custom/DsTimePro.jsx";
 import DsCiviq from "./ds/custom/DsCiviq.jsx";
-import { DS_PRODUCT_SLUGS } from "./lib/dsPublicPaths.js";
 
-// His product pages by manifest slug, matching what main.jsx mounts.
 const DS_PRODUCT_PAGES = {
   quiv: DsQuiv,
   heron: DsHeron,
@@ -69,7 +68,6 @@ import AppError from "./pages/AppError.jsx";
 
 import Home from "./pages/Home.jsx";
 import Products from "./pages/Products.jsx";
-import ProductDetail from "./pages/ProductDetail.jsx";
 import AboutADLM from "./pages/About.jsx";
 import Learn from "./pages/Learn.jsx";
 import Trainings from "./pages/Trainings.jsx";
@@ -97,11 +95,7 @@ export const marketingRoutes = [
       { index: true, element: dsPublic(DsHome) },
 
       { path: "products", element: dsPublic(DsProducts) },
-      ...Object.entries(DS_PRODUCT_SLUGS).map(([key, slug]) => ({
-        path: `product/${key}`,
-        element: dsPublic(DS_PRODUCT_PAGES[slug]),
-      })),
-      { path: "product/:key", element: <ProductDetail /> },
+      { path: "product/:key", element: <DsProductRoute pages={DS_PRODUCT_PAGES} wrap={(page) => <DsShell>{page}</DsShell>} /> },
       { path: "about", element: dsPublic(DsAbout) },
       { path: "learn", element: dsPublic(DsLearn) },
       { path: "trainings", element: dsPublic(DsTrainings) },

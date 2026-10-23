@@ -8,8 +8,8 @@
 //   d.priceLine   his yearly / saving / install sentence, rebuilt from the same
 //   d.latest      the hero's version line, from ../productBuilds.js
 //
-// The fallbacks are his own published figures, so the page reads correctly
-// before the fetch lands and if it fails.
+// The fallback is the shared table in ../catalogueFallback.js, so the page
+// reads correctly before the fetch lands and if it fails.
 
 import React from "react";
 import DsHeronPage from "../pages/DsHeronPage.jsx";
@@ -19,7 +19,7 @@ import { useProductPricing } from "../useProductPricing.js";
 import { latestLabel } from "../productBuilds.js";
 
 export default function DsHeron() {
-  const price = useProductPricing("planswift", { monthly: 25000, yearly: 250000, install: 15000 });
+  const price = useProductPricing("planswift");
   return (
     <DsHeronPage
       d={{

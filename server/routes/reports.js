@@ -27,6 +27,7 @@ import { requireAuth } from "../middleware/auth.js";
 import { requireEntitlementParam } from "../middleware/requireEntitlement.js";
 import { TakeoffProject } from "../models/TakeoffProject.js";
 import { User } from "../models/User.js";
+import { ownerAllowsMoney } from "../util/ownerMoney.js";
 import { ActivityLog } from "../models/ActivityLog.js";
 import {
   buildProjectReport,
@@ -34,6 +35,7 @@ import {
   buildManagementReport,
 } from "../services/reportEngine.js";
 import { parseReportRange, buildPeriodSummary } from "../services/reportPeriod.js";
+import { sampleReportName, SAMPLE_REPORT_TITLE } from "../util/agentSampleGuard.js";
 
 const router = express.Router();
 router.use(requireAuth);
@@ -89,7 +91,13 @@ async function loadReportUser(req) {
 // Loads the project for a report request, enforcing the same rules as the
 // PM dashboard: owner-or-collaborator to read, plus RateGen for non-owners
 // (every report page carries money).
-async function loadProjectForReport(req, res) {
+//
+// A SAMPLE (read-only learning material) is opened only where the caller asks
+// for it (`allowSample`, the Project report Ada's sample card opens), and the
+// route's requireEntitlementParam has already checked the licence for that
+// product: the same rule that opens samples on the website. The payload is
+// then labelled by labelSampleReport().
+async function loadProjectForReport(req, res, { allowSample = false } = {}) {
   const productKey = requestedProductKey(req);
   const id = String(req.params.id || "").trim();
   if (!mongoose.Types.ObjectId.isValid(id)) {
@@ -101,17 +109,34 @@ async function loadProjectForReport(req, res) {
     res.status(401).json({ error: "Invalid user id" });
     return null;
   }
-  const project = await TakeoffProject.findOne({
+  let project = await TakeoffProject.findOne({
     _id: id,
     productKey,
     $or: [{ userId }, { "collaborators.userId": userId }],
   }).lean();
+  if (!project && allowSample) {
+    project = await TakeoffProject.findOne({ _id: id, productKey, isSample: true }).lean();
+    if (project?.isSample === true) return project;
+    project = null;
+  }
   if (!project) {
     res.status(404).json({ error: "Not found" });
     return null;
   }
+  // A sample is read-only for everyone; it is labelled, never refused here.
+  if (project.isSample === true) return project;
 
   const isOwner = project.userId && userId.equals(project.userId);
+  // Every report is priced, so the owner's money switch (R4b) blocks it for a
+  // collaborator the owner hid the money from, whatever they subscribe to.
+  if (!isOwner && !ownerAllowsMoney(project, userId)) {
+    res.status(403).json({
+      error:
+        "The project owner has hidden this project's money from you, so its reports are not available.",
+      code: "MONEY_HIDDEN_BY_OWNER",
+    });
+    return null;
+  }
   if (!isOwner && !(await userHasActiveEntitlement(userId, "rategen"))) {
     res.status(403).json({
       error:
@@ -140,6 +165,14 @@ function readRange(req, res) {
 // `period` for a project report. The activity rows are this project's own
 // trail inside the window; capped because a report prints, it does not page.
 async function periodFor(project, range) {
+  // A sample's activity trail is ADLM staff building it, not a site.
+  if (project?.isSample === true) {
+    return {
+      ...buildPeriodSummary(project, { from: range.from, to: range.to, activity: [] }),
+      fromDay: range.fromDay,
+      toDay: range.toDay,
+    };
+  }
   const where = { projectId: project._id };
   if (range.from || range.to) where.createdAt = {};
   if (range.from) where.createdAt.$gte = range.from;
@@ -162,16 +195,30 @@ async function periodFor(project, range) {
   };
 }
 
+// A sample's report says so on its title (meta.name is the PDF's title and
+// file name) and carries a flag, so it can never pass for a client's report.
+export function labelSampleReport(report, project) {
+  if (project?.isSample !== true || !report) return report;
+  report.sample = true;
+  report.sampleLabel = SAMPLE_REPORT_TITLE;
+  if (report.meta) {
+    report.meta.name = sampleReportName(project);
+    report.meta.sample = true;
+  }
+  return report;
+}
+
 // ── GET /reports/project/:productKey/:id ──────────────────────────────────
 async function getProjectReport(req, res) {
   try {
     const range = readRange(req, res);
     if (range === false) return;
-    const project = await loadProjectForReport(req, res);
+    const project = await loadProjectForReport(req, res, { allowSample: true });
     if (!project) return;
     const user = await loadReportUser(req);
     const report = buildProjectReport(project);
     if (range) report.period = await periodFor(project, range);
+    labelSampleReport(report, project);
     report.preparedBy = {
       name:
         [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
@@ -197,6 +244,7 @@ async function getPmReport(req, res) {
     const user = await loadReportUser(req);
     const report = buildPmReport(project);
     if (range) report.period = await periodFor(project, range);
+    labelSampleReport(report, project);
     report.preparedBy = {
       name:
         [user?.firstName, user?.lastName].filter(Boolean).join(" ") ||
@@ -221,8 +269,9 @@ async function getManagementReport(req, res) {
     const userId = getUserObjectId(req);
     if (!userId) return res.status(401).json({ error: "Invalid user id" });
 
+    // A portfolio never counts a sample, even one that carries this user's id.
     const projects = await TakeoffProject.find(
-      { $or: [{ userId }, { "collaborators.userId": userId }] },
+      { $or: [{ userId }, { "collaborators.userId": userId }], isSample: { $ne: true } },
       {
         materialItems: 0,
         budgetItems: 0,
@@ -246,7 +295,8 @@ async function getManagementReport(req, res) {
       return {
         project,
         role: isOwner ? "owner" : "collaborator",
-        canSeeMoney: isOwner || hasRateGen,
+        // The owner's switch (R4b) narrows the RateGen rule per project.
+        canSeeMoney: isOwner || (hasRateGen && ownerAllowsMoney(project, userId)),
       };
     });
 

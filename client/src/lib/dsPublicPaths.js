@@ -65,6 +65,9 @@ export const DS_PUBLIC_PATHS = new Set([
   // nav and footer must not sit around it.
   "/trainings",
 
+  // His product pages, at the path every link already used (7 Oct 2026).
+  // Only these six render (ds/DsProductRoute.jsx redirects any other key),
+  // so the list is the catalogue map above, not a /product/ prefix.
   ...Object.keys(DS_PRODUCT_SLUGS).map((key) => `/product/${key}`),
 ]);
 

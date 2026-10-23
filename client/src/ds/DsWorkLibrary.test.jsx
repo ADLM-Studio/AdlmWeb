@@ -56,9 +56,19 @@ function stub({ rates = [masterRate], overrides = [], customs = [] } = {}) {
       };
     }
     if (path.includes("/rategen/master")) return { materials: [], labour: [], state: "lagos" };
+    if (path.includes("/library/plant")) return { items: plantItems, version: 1 };
+    if (path.includes("/library/trade-margins")) return { trades: [], version: 1 };
     throw new Error(`unstubbed ${path}`);
   });
 }
+
+// The plant library as GET /rategen-v2/library/plant serves it: the worked
+// mixer from server/util/plantCosting.test.js, and a machine that cannot be
+// priced, which must never read ₦0.
+const plantItems = [
+  { sn: 1, key: "mixer", name: "Mixer", source: "adlm", category: "Concrete plant", dayCost: 54000, hoursPerDay: 8, hourlyRate: 6750, priced: true, problems: [], parts: [] },
+  { sn: 2, key: "tipper", name: "Tipper", source: "adlm", category: "Haulage", dayCost: 0, hoursPerDay: 8, hourlyRate: null, priced: false, problems: ["Diesel has no price"], parts: [] },
+];
 
 const mount = () =>
   render(
@@ -154,7 +164,7 @@ describe("the RateGen library", () => {
     await findByText(/Nothing in the library yet/);
   });
 
-  it("offers the four tabs, and the Plant tab reads the machines out of the rates", async () => {
+  it("offers the four tabs, and the Plant tab is the plant library, priced by the hour", async () => {
     stub();
     const { container, findByText, getByText } = mount();
     await findByText("Blockwork 225mm in cement mortar");
@@ -164,8 +174,25 @@ describe("the RateGen library", () => {
 
     fireEvent.click(getByText("Plant"));
     await waitFor(() => expect(container.textContent).toContain("Mixer"));
-    // Read off the build-ups, not invented.
+    // ₦54,000 a day over 8 hours, used by the hour
+    expect(container.textContent).toContain("6,750");
+    expect(container.textContent).toContain("8-hour day");
+    // "Used in" is counted off the build-ups that name it, not invented.
     expect(container.textContent).toContain("1 rate");
+    // A machine that cannot be priced says why, and is never shown at ₦0.
+    const tipper = [...container.querySelectorAll(".wk-row")].find((r) => r.textContent.includes("Tipper"));
+    expect(tipper.textContent).toContain("Diesel has no price");
+    expect(tipper.textContent).not.toMatch(/₦\s?0\.00 ?per hr/);
+  });
+
+  // R2 trade margins are set in Rate Gen (owner's rule, 4 Oct 2026): the
+  // website has no editor for them, and the plant library is read only.
+  it("offers no trade-margin editor and no plant editing on the website", async () => {
+    stub();
+    const { container, findByText, queryByText } = mount();
+    await findByText("Blockwork 225mm in cement mortar");
+    expect(container.textContent).not.toContain("Default margins by trade");
+    expect(queryByText("Add a machine of your own")).toBeNull();
   });
 
   // Owner's rule, 4 Oct 2026: rates are built and edited only in Rate Gen. The
@@ -291,5 +318,56 @@ describe("a library bigger than one page", () => {
     await findByText("Concrete 1:2:4 in foundations");
     expect(container.querySelectorAll(".wk-row")).toHaveLength(2);
     expect(container.querySelector(".wk-count").textContent).toContain("2 of 2 rates");
+  });
+});
+
+// The bulk price change ("Update prices", S18 review finding 5) is gone, and its
+// three tests with it: server/middleware/rateGenOnlyWrites.js refuses
+// PUT /rategen/price-overrides/bulk from a browser under the owner's rule that
+// rates and prices are edited in Rate Gen desktop only. Deleted rather than
+// skipped, because a skipped test for a removed control invites it back.
+
+/* ──────── rates are built and edited in Rate Gen desktop ──────── */
+
+// The owner's rule: a rate is built and edited in Rate Gen desktop and nowhere
+// else. Two controls used to sit at the top of this screen — "Build a custom
+// rate", which opened a builder and POSTed a new rate, and "Edit the library",
+// which sent the reader to the classic editor.
+//
+// This is the guard, not a style preference. A button like that is exactly the
+// kind of thing that comes back: somebody restores it from an older file, or
+// re-adds it because the screen "looks empty" without an action. If it does,
+// the website becomes a second place rates can be created, and the desktop
+// library and the cloud copy start to disagree about what a rate is.
+describe("building and editing rates is not offered here", () => {
+  it("offers no way to build a rate", async () => {
+    stub();
+    const { findByText, queryByText } = mount();
+    await findByText(/Blockwork 225mm/);
+    expect(queryByText("Build a custom rate")).toBeNull();
+    expect(queryByText(/Build a custom/i)).toBeNull();
+  });
+
+  it("offers no way to edit the library", async () => {
+    stub();
+    const { findByText, queryByText, container } = mount();
+    await findByText(/Blockwork 225mm/);
+    expect(queryByText("Edit the library")).toBeNull();
+    // ...and no link out to the classic editor, which is where it went.
+    expect(container.querySelector('a[href="/rategen"]')).toBeNull();
+  });
+
+  it("says where rates ARE built, so the screen does not just look broken", async () => {
+    // Removing a control without saying where it went is how a screen reads as
+    // missing a feature rather than as deliberate.
+    stub();
+    const { findByText } = mount();
+    expect(await findByText(/Rate Gen desktop/)).toBeTruthy();
+  });
+
+  it("still shows the library, which is what the screen is for", async () => {
+    stub();
+    const { findByText } = mount();
+    expect(await findByText(/Blockwork 225mm/)).toBeTruthy();
   });
 });

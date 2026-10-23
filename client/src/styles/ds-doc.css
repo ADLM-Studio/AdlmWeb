@@ -116,12 +116,8 @@
 .ds .doc-head .doc-contact{display:flex;flex-direction:column;gap:4.9pt;align-items:flex-start}
 .ds .doc-head .doc-contact div{display:flex;align-items:center;gap:2pt;
   font-size:7.1pt;font-weight:500;line-height:1;color:var(--doc-navy);letter-spacing:-.43pt}
-.ds .doc-head .doc-contact svg{width:7.8pt;height:7.8pt;flex:none;fill:currentColor}
-.ds .doc-head .doc-place{align-items:flex-start}
-.ds .doc-head .doc-place svg{margin-top:.6pt}
-.ds .doc-head .doc-place span{line-height:1.35}
-.ds .doc-head .doc-reg{padding-left:9.8pt;letter-spacing:0}
-.ds .doc-head .doc-social{display:flex;gap:3.4pt;align-items:center;margin-right:1.8pt}
+.ds .doc-head .doc-contact svg{width:8.2pt;height:8.2pt;flex:none;fill:none;stroke:currentColor;stroke-width:1.6}
+.ds .doc-head .doc-contact div{gap:3pt}
 
 
 /* the pale tab that runs off the left edge */
@@ -312,7 +308,12 @@
 .ds .doc-pagefoot{position:absolute;left:52pt;right:51pt;top:800pt;
   display:flex;align-items:center;justify-content:space-between;
   font-size:7pt;font-weight:300;color:var(--doc-meta)}
-.ds .doc-pagefoot .doc-credit{letter-spacing:.01em}
+.ds .doc-pagefoot .doc-credit{letter-spacing:.01em;flex:none}
+.ds .doc-pagefoot .doc-pageno{flex:none;white-space:nowrap}
+/* the small print: address, handle, registration — on the sheet, below the letter */
+.ds .doc-foot{display:flex;align-items:center;gap:9pt;flex-wrap:wrap;min-width:0}
+.ds .doc-foot-i{display:inline-flex;align-items:center;gap:2.6pt;white-space:nowrap}
+.ds .doc-foot-i svg{width:7.4pt;height:7.4pt;flex:none;fill:none;stroke:currentColor;stroke-width:1.6}
 
 
 /* ---------------------------------------------------------------- invoice head */

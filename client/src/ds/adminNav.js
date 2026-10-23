@@ -50,6 +50,10 @@ export const NAV = [
       { to: "/admin/ptrainings", label: "Enrolments", icon: "hi-calendar", area: "trainings", badge: "enrolments", admin: true },
       { to: "/admin/course-grading", label: "Submissions", icon: "hi-check", area: "learn", badge: "submissions", admin: true },
       { to: "/admin/follow-ups", label: "Follow-ups", icon: "hi-phone", area: "followups", badge: "followups" },
+      // Not in his rail: built after his handover. Cold-email drafts waiting
+      // for a person. No badge until /admin/today counts this queue. The route
+      // checks the "prospecting" area and no admin role, so no `admin: true`.
+      { to: "/admin/prospecting", label: "Prospecting", icon: "hi-search", area: "prospecting" },
     ],
   },
   {
@@ -154,6 +158,10 @@ export const NAV = [
     // the <div class="adm-rule"> he separates it with.
     rule: true,
     items: [
+      // Your desk: one queue of everything waiting on the person signed in —
+      // ideas, the website batch, builds, gated settings, emergencies and the
+      // team task feed. Richard's design (adlm-studio.vercel.app/admin/desk).
+      { to: "/admin/desk", label: "Your desk", icon: "hi-check", area: "releases" },
       // Release sign-off (docs/RELEASE_GATE.md): the approver's desk.
       { to: "/admin/releases", label: "Release sign-off", icon: "hi-check", area: "releases" },
       // The work board (docs/WORK_BOARD.md): what is in flight, and approval

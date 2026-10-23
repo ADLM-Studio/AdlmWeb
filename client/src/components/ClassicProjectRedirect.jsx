@@ -24,8 +24,9 @@
 // only if the answer is a /work/project/ address. That is deliberate: a
 // redirect that disagreed with the cards would be worse than no redirect, and
 // it keeps the products that are NOT part of this page — ArchiCAD, which has
-// its own /archicad/:key/boq screen, and RateGen, which has /rategen — going
-// where they already go.
+// its own /archicad/:key/boq screen, and RateGen without a project, which has
+// /rategen — going where they already go. A RateGen project (a bill priced in
+// RateGen and saved to ADLM Cloud) opens on this page like the others.
 //
 // THE WAY BACK
 //
@@ -54,6 +55,9 @@ export default function ClassicProjectRedirect({ children }) {
   const to = classicProjectTarget({
     tool,
     project: params.get("project"),
+    // Translated to the new build's own spelling on the way, and dropped if
+    // this product has no such tab — not passed through raw.
+    tab: params.get("tab") || "",
     wantsClassic: params.get(CLASSIC_PARAM) === "1",
     newBuild: seesNewBuild(user),
   });
