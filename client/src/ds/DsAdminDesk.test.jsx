@@ -344,3 +344,62 @@ describe("Your desk", () => {
     expect(screen.getByText(/Part of the desk could not be loaded/)).toBeTruthy();
   });
 });
+
+// Answering one flow on a long sheet (Richard, Batch 14, 109 flows).
+//
+// "Buttons will not be clickable for a while, and the list still looks the
+// same, or it takes me back to the very top." All three came from answering
+// a flow refetching the whole desk: it disabled every other verdict button,
+// it left the answer invisible until four endpoints came back, and replacing
+// the data rebuilt the drawer and lost his place.
+describe("answering a flow on a long sheet", () => {
+  const longBatch = {
+    _id: "b2",
+    title: "Batch 14",
+    status: "testing",
+    headSha: "3bd8883",
+    products: ["website"],
+    createdAt: "2026-10-20T09:00:00Z",
+    items: Array.from({ length: 12 }, (_, i) => ({
+      key: `k${i}`,
+      kind: "flow",
+      title: `Flow number ${i}`,
+      where: "https://preview/x",
+      steps: ["Open it"],
+      verdict: "",
+    })),
+  };
+
+  it("shows the answer at once, saves it, and does not reload the desk", async () => {
+    serve({ current: longBatch });
+    mount();
+    await waitFor(() => expect(screen.getByText("Batch 14")).toBeTruthy());
+    fireEvent.click(screen.getByText("Batch 14"));
+    await waitFor(() => expect(screen.getByText("0 of 12 checked")).toBeTruthy());
+
+    const loadsBefore = calls.filter((c) => c.method === "GET").length;
+    fireEvent.click(screen.getAllByText("Works")[3]);
+
+    // the count moves on the click, not when the network agrees
+    await waitFor(() => expect(screen.getByText("1 of 12 checked")).toBeTruthy());
+    await waitFor(() =>
+      expect(calls.some((c) => c.path === "/admin/releases/batch/b2/verdict")).toBe(true),
+    );
+    // and the desk is not refetched, which is what rebuilt the drawer and
+    // threw him back to the top of a hundred-odd rows
+    expect(calls.filter((c) => c.method === "GET").length).toBe(loadsBefore);
+  });
+
+  it("leaves the other flows answerable while one is saving", async () => {
+    serve({ current: longBatch });
+    mount();
+    await waitFor(() => expect(screen.getByText("Batch 14")).toBeTruthy());
+    fireEvent.click(screen.getByText("Batch 14"));
+    await waitFor(() => expect(screen.getByText("0 of 12 checked")).toBeTruthy());
+
+    fireEvent.click(screen.getAllByText("Works")[0]);
+    // every other flow's buttons stay live
+    const stillLive = screen.getAllByText("Works").filter((b) => !b.disabled);
+    expect(stillLive.length).toBeGreaterThan(9);
+  });
+});
