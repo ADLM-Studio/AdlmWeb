@@ -30,6 +30,7 @@ import express from "express";
 import { requireAuth, requirePermission } from "../middleware/auth.js";
 import { Purchase } from "../models/Purchase.js";
 import { User } from "../models/User.js";
+import { seatFigure } from "../util/seatFigure.js";
 
 const router = express.Router();
 router.use(requireAuth, requirePermission("adminhub"));
@@ -83,7 +84,9 @@ router.get("/", async (req, res, next) => {
       const u = byId.get(String(p.userId));
       const ins = p.installation || {};
       const grants = grantsOf(p);
-      const seats = grants.reduce((t, g) => t + (n0(g.seats) || 1), 0);
+      // The seats on the licence being installed — per product, so "3" for
+      // three people on two products, not 6. A range when the grants differ.
+      const seats = seatFigure(grants).label;
 
       // The two states his orphan heading exists for.
       let blocked = null;

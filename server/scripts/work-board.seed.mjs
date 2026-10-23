@@ -632,4 +632,53 @@ export const SEED = [
       surfaces: "Share dialog (Show money / Hide money switch, 'Money hidden' chip on a code). Collaborator roster (per-person Money shown / Money hidden). Project header notice ('Money hidden by the project owner'). Gallery card flag ('Money hidden by owner'), programme cards ('hidden by the owner'), classic portfolio rows (en dash).",
     },
   },
+
+  // ── Customer requests: Melodiva Projects QUIV overview demo, 10 Oct 2026 ──
+  // Organisation licence, QUIV + Rate Gen, 3 seats, paying. Filed 11 Oct 2026 with
+  // full business cases (work-board.mjs propose); these entries keep the design
+  // surfaces visible to Richard. Two touch standing decisions, named below.
+  {
+    key: "fewer-sign-ins",
+    title: "Fewer sign-ins: stay signed in on a trusted PC, on the website and in the plugins",
+    products: ["platform", "website", "quiv", "rategen", "heron", "mep"],
+    kind: "improvement",
+    stage: "proposed",
+    summary: "Melodiva Projects demo, 10 Oct 2026: the plugins and the website ask her to sign in too often. Investigated 11 Oct: the website's 30-day refresh cookie never slides and is cross-site (blocked by third-party-cookie browsers, so sign-out every 3 hours); QUIV 4 persists its refresh cookie under the wrong name ('refreshToken' vs the server's 'rt'), so every Revit restart after 3 hours is a password prompt; Rate Gen keeps the refresh in memory only.",
+    pending: "Richard's approve or decline. The plugin cookie defects are fixes and can go ahead without approval; 'Keep me signed in', the signed-in devices list and the first-party cookie wait for the decision.",
+    refs: "server/util/jwt.js, server/routes/auth.js /refresh, client/src/store.jsx, client/src/http.js · RevitPluginArch feat/quiv-4 ADLM.Auth/PluginAuthService.cs · ADLMRateGen ADLM.Auth/AuthClient.cs",
+    design: { status: "needed", surfaces: "Website sign-in: 'Keep me signed in on this device' checkbox and helper text. Account settings: Signed-in devices panel with Sign out per row and Sign out everywhere. QUIV 4 dock sign-in and Rate Gen splash sign-in: the same checkbox, and the 'Your session ended, sign in again' notice. Light and dark." },
+  },
+  {
+    key: "rategen-price-list-import",
+    title: "Rate Gen: import a firm's own material and labour prices from a spreadsheet",
+    products: ["rategen"],
+    kind: "feature",
+    stage: "proposed",
+    summary: "Melodiva Projects demo, 10 Oct 2026: bring a supplier price list (materials and labour) into Rate Gen instead of editing the library one price at a time. Respects the 6 Oct 2026 decision that rates are built in Rate Gen only: a Rate Gen desktop feature, nothing on the website.",
+    pending: "Richard's approve or decline, then his design of the import wizard in the Rate Gen 3.0 language.",
+    refs: "ADLM-Studio/ADLMRateGen View/MaterialPriceView.xaml, LabourPriceView.xaml · reuse HERON ClientBillReader column detection",
+    design: { status: "needed", surfaces: "Material library and Labour library: an 'Import prices' button; the wizard (choose file, pick sheet, confirm Name / Unit / Price / Category columns with a preview); the review table with four row states (matched, new item, unit mismatch, large change) and tick boxes; the result ('N prices updated, M rates re-priced'); Import history with Revert; empty and error states." },
+  },
+  {
+    key: "quiv-own-bill-import",
+    title: "QUIV: import a firm's own Excel bill format and keep working in that layout (asks to revisit the 17 Sep HERON-only decision)",
+    products: ["quiv", "website"],
+    kind: "feature",
+    stage: "proposed",
+    summary: "Melodiva Projects demo, 10 Oct 2026: bring her own Excel bill format into QUIV and keep working in her layout. CONFLICTS with the 17 Sep 2026 decision that Excel BoQ import is HERON-only (server/util/boqImportAccess.js). Needs client-bill-fill finished for QUIV plus the website accepting a QUIV user's bill as a project. Filed so Richard and the owner decide knowingly: confirm HERON-only, or extend to QUIV (organisation licences, admin-granted, as on 20 Jul 2026).",
+    pending: "A decision from Richard and the owner on the HERON-only rule first; then Richard's design of the website import and export for QUIV projects. The QUIV panel import flow is already on client-bill-fill's design track.",
+    refs: "server/util/boqImportAccess.js, server/util/boqExcelImport.js, server/routes/projects.js import-boq, client/src/pages/ProjectsGeneric.jsx · board items client-bill-fill, boq-pdf-to-excel, rategen-price-a-bill · commit dc2ce09 (17 Sep)",
+    design: { status: "needed", surfaces: "Website, QUIV projects: the Import Excel BoQ button and modal, Update from Excel, the imported-project badge and withheld tabs, and Export in the firm's layout. QUIV 4.0 panel: Import a bill, review, write back (on client-bill-fill). Admin: the feature-access panel if the admin-grant model is chosen." },
+  },
+  {
+    key: "price-external-bill",
+    title: "Price a bill received from another consultant automatically (customer ask; mostly the approved 'RateGen: price any bill with ADLM AI')",
+    products: ["rategen", "quiv", "website", "ai-service"],
+    kind: "feature",
+    stage: "proposed",
+    summary: "Melodiva Projects demo, 10 Oct 2026: price a consultant's bill automatically instead of typing rates one by one in Rate Gen. Largely the approved rategen-price-a-bill (3 Oct 2026, not started); the website's bill pricing (Batch 8, 5 Oct) only works on bills already on the website. This record adds the customer demand and asks for rategen-price-a-bill to be built next. Its 'save to ADLM Cloud' output depends on the quiv-own-bill-import decision.",
+    pending: "Richard's approve or decline (as a priority call on rategen-price-a-bill). No new design beyond rategen-price-a-bill's surfaces.",
+    refs: "board item rategen-price-a-bill · live: bill-price-similar-lines, rate-suggest-from-usage, rate-unit-conversion, ada-estimator-pm · adlm-ai-service budget-match, rate-buildup, boq-check",
+    design: { status: "needed", surfaces: "None new beyond rategen-price-a-bill. Open question: where the priced bill lands on ADLM Cloud for a firm with Rate Gen and QUIV but not HERON (follows quiv-own-bill-import)." },
+  },
 ];

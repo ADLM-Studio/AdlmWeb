@@ -12,7 +12,7 @@ const quiet = (over = {}) => ({
   phone: "08078190250",
   status: "to_call",
   calls: 0,
-  seats: 32,
+  seats: "8",
   days: 70,
   neverUsed: false,
   products: ["QUIV", "HERON"],
@@ -44,9 +44,9 @@ test("the subject counts what needs a person, and flags the sandbox", () => {
 });
 
 test("the body names the firm, the seats and how long it has been quiet", () => {
-  const { html } = buildDigest({ at: AT, silent: [quiet(), quiet({ firm: "", name: "Solo QS", neverUsed: true, days: 30, seats: 4 })], unconfirmed: [], waiting: [], netFails: [], ses: {} });
+  const { html } = buildDigest({ at: AT, silent: [quiet(), quiet({ firm: "", name: "Solo QS", neverUsed: true, days: 30, seats: "4" })], unconfirmed: [], waiting: [], netFails: [], ses: {} });
   assert.match(html, /Y\.S\. Associates Ltd/);
-  assert.match(html, />32</);
+  assert.match(html, />8</);
   assert.match(html, /70 days/);
   assert.match(html, /never used/);
 });

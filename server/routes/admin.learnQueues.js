@@ -32,6 +32,7 @@ import { CourseSubmission } from "../models/CourseSubmission.js";
 import { FollowUp, CALL_OUTCOMES, FOLLOWUP_STATUSES } from "../models/FollowUp.js";
 import { Training } from "../models/Training.js";
 import { User } from "../models/User.js";
+import { seatFigure } from "../util/seatFigure.js";
 
 const router = express.Router();
 
@@ -226,7 +227,9 @@ router.get("/followups", requireAuth, requirePermission("adminhub"), async (req,
         ? {
             neverUsed: !!f.silence.neverUsed,
             days: f.silence.days ?? null,
-            seats: n0(f.silence.seats),
+            // The licence's seat figure across the quiet products — "8", or
+            // "2–8" when they differ — never their sum.
+            seats: seatFigure(f.silence.products || []).label,
           }
         : null,
       overdue: n0(f.maxDaysOverdue),
@@ -287,7 +290,7 @@ router.get("/organisations", requireAuth, requirePermission("users"), async (_re
         if (!name) continue;
         let f = firms.get(name);
         if (!f) {
-          f = { name, people: new Map(), products: new Set(), seats: 0, live: 0, expired: 0 };
+          f = { name, people: new Map(), products: new Set(), seatsOf: [], live: 0, expired: 0 };
           firms.set(name, f);
         }
         f.people.set(String(u._id), {
@@ -300,7 +303,7 @@ router.get("/organisations", requireAuth, requirePermission("users"), async (_re
           String(e.status).toLowerCase() === "active" &&
           (!e.expiresAt || new Date(e.expiresAt).getTime() >= Date.now());
         if (live) {
-          f.seats += n0(e.seats) || 1;
+          f.seatsOf.push(e);
           f.live += 1;
         } else {
           f.expired += 1;
@@ -308,17 +311,26 @@ router.get("/organisations", requireAuth, requirePermission("users"), async (_re
       }
     }
 
+    // SEATS ARE PER PRODUCT. A firm's seat figure is the seats on its licence
+    // — the same people use each of its products — so it is the count the
+    // products share, or a range ("2–3") when they differ, and never the sum.
+    // The number of products is `software`, under its own word.
     const items = [...firms.values()]
-      .map((f) => ({
-        name: f.name,
-        accounts: [...f.people.values()],
-        headcount: f.people.size,
-        products: [...f.products],
-        seats: f.seats,
-        live: f.live,
-        expired: f.expired,
-      }))
-      .sort((a, b) => b.seats - a.seats || a.name.localeCompare(b.name));
+      .map((f) => {
+        const fig = seatFigure(f.seatsOf);
+        return {
+          name: f.name,
+          accounts: [...f.people.values()],
+          headcount: f.people.size,
+          products: [...f.products],
+          software: f.products.size,
+          seats: fig.label,
+          seatsMax: fig.max,
+          live: f.live,
+          expired: f.expired,
+        };
+      })
+      .sort((a, b) => b.seatsMax - a.seatsMax || a.name.localeCompare(b.name));
 
     res.json({ items, total: items.length });
   } catch (err) {
