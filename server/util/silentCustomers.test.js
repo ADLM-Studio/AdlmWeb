@@ -81,7 +81,8 @@ test("web-only entitlements are ignored", () => {
   );
 });
 
-test("seats add up across silent products, and days is the shortest quiet spell", () => {
+test("seats are the licence's figure, not added up across products; days is the shortest quiet spell", () => {
+  // The same eight people hold QUIV and HERON: eight seats, two products.
   const s = classifySilence({
     entitlements: [
       licence({ productKey: "revit", seats: 8, devices: [{ lastSeenAt: daysAgo(70) }] }),
@@ -89,7 +90,7 @@ test("seats add up across silent products, and days is the shortest quiet spell"
     ],
     now: NOW,
   });
-  assert.equal(s.seats, 16);
+  assert.equal(s.seats, 8);
   assert.equal(s.days, 20);
   assert.equal(s.products.length, 2);
 });
@@ -109,7 +110,7 @@ test("one product in use does not hide others that have gone dark", () => {
   });
   assert.ok(s, "the account must be flagged");
   assert.deepEqual(s.products.map((p) => p.productKey).sort(), ["mep", "planswift", "revit"]);
-  assert.equal(s.seats, 24);
+  assert.equal(s.seats, 8);
   assert.equal(s.days, 70);
   assert.equal(s.neverUsed, false);
 });

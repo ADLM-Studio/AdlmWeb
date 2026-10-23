@@ -12,6 +12,7 @@ import { TakeoffProject } from "../models/TakeoffProject.js";
 import { autoEnrollFromPurchase } from "../util/autoEnroll.js";
 import { sendMail } from "../util/mailer.js";
 import { notifySeatsChanged } from "../util/orgVideoMail.js";
+import { seatFigure } from "../util/seatFigure.js";
 import { runExpiryNotifier } from "../util/expiryNotifier.js";
 import { sendBoqImportGrantEmail } from "../util/boqImportGrantEmail.js";
 import {
@@ -666,7 +667,11 @@ router.get(
           productCount: new Set(products.map((p) => p.productKey)).size,
           activeProductCount: new Set(activeProducts.map((p) => p.productKey))
             .size,
-          totalSeats: products.reduce((a, p) => a + p.seats, 0),
+          // Seats are per product, and the same people use each of the
+          // firm's products, so the firm's figure is the seats on its licence
+          // ("8", or "2–8" when the products differ) — never the products'
+          // seats added together. productCount above is the software count.
+          seats: seatFigure(activeProducts.length ? activeProducts : products).label,
           activeDevices: products.reduce((a, p) => a + p.activeDevices, 0),
           soonestExpiry: withExpiry[0]?.expiresAt || null,
           products,

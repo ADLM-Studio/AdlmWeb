@@ -36,6 +36,7 @@ import { resolveUserGuideUrl } from "../util/userGuide.js";
 import { isGodUser } from "../util/godAccount.js";
 import bcrypt from "bcryptjs";
 import { validatePasswordStrength } from "../util/passwordPolicy.js";
+import { seatFigure } from "../util/seatFigure.js";
 import {
   BOQ_IMPORT_ENTITLEMENT,
   BOQ_IMPORT_LEGACY_ENTITLEMENT,
@@ -2469,6 +2470,20 @@ router.get(
       .catch(() => []);
     const sold = new Set(productKeys);
     const now = dayjs();
+    // productsOwned / productsTotal is the SOFTWARE count — how many of the
+    // products we sell this account holds. It is not the seat count, and the
+    // rail item is named "Products & seats", so the badge used to show a
+    // product count under the word seats.
+    //
+    // `seats` is the number of users the licence is for: a per-product figure
+    // that is the same across an organisation's products (the same people use
+    // each), so one figure stands for the account — "3", or "2–3" if the
+    // products disagree — and it is never the products' seats added up. Only
+    // live licences count; a lapsed one licenses nobody.
+    const live = (user?.entitlements || []).filter(
+      (e) =>
+        String(e.status || "").toLowerCase() === "active" && !isEntExpiredAt(e.expiresAt),
+    );
     const owned = new Set(
       (user?.entitlements || [])
         .filter(
@@ -2495,6 +2510,7 @@ router.get(
       productsOwned: owned.size,
       productsTotal: catalogue,
       ownedKeys: [...owned],
+      seats: seatFigure(live).label,
       name: user?.name || "",
       email: user?.email || "",
       organizationName: user?.organizationName || "",
