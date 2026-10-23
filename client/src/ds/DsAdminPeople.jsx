@@ -102,6 +102,14 @@ export default function DsAdminPeople() {
           <AdmDim>nothing</AdmDim>
         ),
     },
+    // Two numbers, two words. Software is how many products they hold; seats
+    // is how many users the licence is for — the same across an
+    // organisation's products, or a range when not — and never their sum.
+    {
+      h: "Software",
+      num: true,
+      cell: (a) => (a.software ? a.software : <AdmDim>–</AdmDim>),
+    },
     {
       h: "Seats",
       num: true,

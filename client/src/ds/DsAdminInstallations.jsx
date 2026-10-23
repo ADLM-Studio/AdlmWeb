@@ -32,6 +32,7 @@ import React from "react";
 import { apiAuthed } from "../api.js";
 import { useAuth } from "../store.jsx";
 import { useAdmToast } from "./adminKit.jsx";
+import { seatsText } from "../lib/seatFigure.js";
 
 const when = (d) =>
   d ? new Date(d).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" }) : "";
@@ -211,9 +212,7 @@ export default function DsAdminInstallations() {
                     <b>{i.products.join(" · ")}</b>
                     <span className="adm-meta">
                       <span>{i.ref}</span>
-                      <span>
-                        {i.seats} seat{i.seats === 1 ? "" : "s"}
-                      </span>
+                      {i.seats ? <span>{seatsText(i.seats)}</span> : null}
                       {i.months ? <span>{i.months} months</span> : null}
                     </span>
                   </>

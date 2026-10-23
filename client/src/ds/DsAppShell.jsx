@@ -36,6 +36,7 @@ import { RAIL, railItems } from "./railConfig.js";
 import { useFeedback } from "./feedback/feedbackContext.js";
 import NetworkIndicator from "../components/NetworkIndicator.jsx";
 import Seo from "../components/Seo.jsx";
+import { seatsText } from "../lib/seatFigure.js";
 
 // His app screens load dash.css and work.css on top of site.css. Importing
 // them here rather than in main.jsx is what keeps ~91 KB of dashboard styling
@@ -196,10 +197,13 @@ export default function DsAppShell({
     projects: badge(counts?.projects),
     rates: badge(counts?.rates),
     certificates: badge(counts?.certificates),
-    seats:
-      counts && counts.productsTotal
-        ? `${counts.productsOwned} of ${counts.productsTotal}`
-        : "",
+    // The badge on "Products & seats" is the SEAT count — the number of users
+    // the licence is for, one figure across the account's products ("3", or
+    // "2–3" when they differ). It used to show how many products the account
+    // held against the catalogue ("2 of 7"), which is the software count, not
+    // seats; shown under that word it read as a seat figure. The unit is in
+    // the badge so it cannot be misread again.
+    seats: seatsText(counts?.seats),
     // Teams are not a feature yet, so this badge stays empty rather than
     // inventing "3/5" — the item still navigates, and the screen says so.
     team: "",
