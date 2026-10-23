@@ -108,6 +108,7 @@ import adminVideos from "./routes/admin.videos.js";
 import adminReleaseNotifications from "./routes/admin.releaseNotifications.js";
 import adminReleases from "./routes/admin.releases.js";
 import adminBatch from "./routes/admin.batch.js";
+import adminTeamTasks from "./routes/admin.teamTasks.js";
 import releaseGatePublic from "./routes/releaseGatePublic.js";
 import adminWork from "./routes/admin.work.js";
 
@@ -414,6 +415,7 @@ app.use("/admin/release-notifications", adminReleaseNotifications);
 // The batch router first: /admin/releases/batch would otherwise be caught by
 // the candidate router's /:id routes.
 app.use("/admin/releases/batch", adminBatch);
+app.use("/admin/team-tasks", adminTeamTasks);
 app.use("/admin/releases", adminReleases);
 // Read-only, no credential: GitHub's required status check asks this whether
 // the approver signed off a given commit (docs/RELEASE_GATE.md).

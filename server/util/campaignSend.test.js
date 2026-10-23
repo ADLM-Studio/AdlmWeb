@@ -282,6 +282,10 @@ test("the stuck price campaign: 453 in the ledger, at 'sending', is finished wit
     pacing,
     writeAudit: async (a) => audits.push(a),
     log: silent,
+    // The sweep is run as if it were the morning after, not today: with the
+    // real clock this record became "too old to resume" on 15 Oct 2026 and the
+    // test started failing by itself, on every branch.
+    now: () => day.getTime() + 20 * 60 * 60 * 1000,
   });
 
   assert.equal(sent.length, 0, "not one message");
