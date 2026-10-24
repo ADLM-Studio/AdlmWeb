@@ -236,6 +236,18 @@ router.get("/followups", requireAuth, requirePermission("adminhub"), async (req,
       calls: n0(f.callCount),
       lastCalledAt: f.lastCalledAt || null,
       lastOutcome: String(f.lastOutcome || "").trim(),
+      // What was actually said on the last call, in the caller's own words.
+      // The outcome is one of eight fixed labels; this is the part that tells
+      // whoever rings next what to pick up on.
+      lastNote: String(f.calls?.[f.calls.length - 1]?.note || "").trim(),
+      // Every call so far, newest first, so the earlier conversations can be
+      // read before dialling.
+      log: [...(f.calls || [])].reverse().map((c) => ({
+        at: c.at || null,
+        outcome: String(c.outcome || ""),
+        note: String(c.note || "").trim(),
+        by: String(c.byName || "").trim(),
+      })),
       nextAt: f.nextFollowUpAt || null,
       assignedTo: String(f.assignedToName || "").trim(),
       // Somebody who let one licence lapse but still holds another is a
